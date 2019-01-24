@@ -47,6 +47,10 @@ type Log struct {
 
 	// Data holds the log entry's type-specific data.
 	Data []byte
+
+	// Feiran
+	// Timestamp of the entry
+	Timestamp int64
 }
 
 // LogStore is used to provide an interface for storing
