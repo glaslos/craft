@@ -638,12 +638,15 @@ func (r *Raft) Apply(cmd []byte, timeout time.Duration) ApplyFuture {
 	if r.isResigning {
 		return errorFuture{ErrRaftShutdown}
 	}
+	timestamp := time.Now().UnixNano()
 
 	// Create a log future, no index or term yet
 	logFuture := &logFuture{
 		log: Log{
 			Type: LogCommand,
 			Data: cmd,
+			// Feiran
+			Timestamp: timestamp,
 		},
 	}
 	logFuture.init()
