@@ -235,7 +235,7 @@ func (r *Raft) liveBootstrap(configuration Configuration) error {
 	r.processConfigurationLogEntry(&entry)
 
 	// Feiran
-	r.initTargetPriority(configuration)
+	r.initPriority(configuration)
 
 	return nil
 }
@@ -1152,7 +1152,7 @@ func (r *Raft) processConfigurationLogEntry(entry *Log) {
 		r.configurations.latest = decodeConfiguration(entry.Data)
 		r.configurations.latestIndex = entry.Index
 		// Feiran
-		r.initTargetPriority(decodeConfiguration(entry.Data))
+		r.initPriority(decodeConfiguration(entry.Data))
 	} else if entry.Type == LogAddPeerDeprecated || entry.Type == LogRemovePeerDeprecated {
 		r.configurations.committed = r.configurations.latest
 		r.configurations.committedIndex = r.configurations.latestIndex
@@ -1497,10 +1497,13 @@ func (r *Raft) setState(state RaftState) {
 // Feiran
 // initPriority computes the max priority in configuration,
 // used after a configuration change
-func (r *Raft) initTargetPriority(configuration Configuration) {
-	for _, conf := range configuration.Servers {
-		if conf.Priority > r.maxPriority {
-			r.maxPriority = conf.Priority
+func (r *Raft) initPriority(configuration Configuration) {
+	for _, server := range configuration.Servers {
+		if server.ID == r.localID {
+			r.priority = server.Priority
+		}
+		if server.Priority > r.maxPriority {
+			r.maxPriority = server.Priority
 		}
 	}
 	r.targetPriority = r.maxPriority
@@ -1514,8 +1517,8 @@ func (r *Raft) resetTargetPriority() {
 // Feiran
 func (r *Raft) decayTargetPriority() {
 	gap := r.targetPriority / 5
-	if gap < 5 {
-		gap = 5
+	if gap < 1 {
+		gap = 1
 	}
 
 	targetPriority := r.targetPriority - gap

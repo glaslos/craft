@@ -195,9 +195,7 @@ type Config struct {
 	Logger *log.Logger
 
 	// Feiran
-	GroupID int
 	LocalIDInt int
-	Priority int
 }
 
 // DefaultConfig returns a Config with usable defaults.

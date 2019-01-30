@@ -479,10 +479,9 @@ func NewRaft(conf *Config, fsm FSM, logs LogStore, stable StableStore, snaps Sna
 		observers:             make(map[uint64]*Observer),
 
 		// Feiran
-		groupID: conf.GroupID,
 		localIDInt: conf.LocalIDInt,
-		priority: conf.Priority,
-		maxPriority: conf.Priority,
+		priority: 1,
+		maxPriority: 1,
 		targetPriority: 1,
 	}
 
@@ -1039,4 +1038,11 @@ func (r *Raft) LastIndex() uint64 {
 // index.
 func (r *Raft) AppliedIndex() uint64 {
 	return r.getLastApplied()
+}
+
+// SetupGroups sets the Raft group replicas
+func (r *Raft) SetupGroups(groupID int, localReplicas []*Raft, merger *merger.Merger) {
+	r.groupID = groupID
+	r.merger = merger
+	r.localReplicas = localReplicas
 }
