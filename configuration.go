@@ -46,6 +46,9 @@ type Server struct {
 	ID ServerID
 	// Address is its network address that a transport can contact.
 	Address ServerAddress
+	// Feiran
+	// election priority
+	Priority int
 }
 
 // Configuration tracks which servers are in the cluster, and whether they have

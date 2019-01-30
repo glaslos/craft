@@ -193,6 +193,11 @@ type Config struct {
 	// Logger is a user-provided logger. If nil, a logger writing to LogOutput
 	// is used.
 	Logger *log.Logger
+
+	// Feiran
+	GroupID int
+	LocalIDInt int
+	Priority int
 }
 
 // DefaultConfig returns a Config with usable defaults.

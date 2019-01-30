@@ -233,6 +233,10 @@ func (r *Raft) liveBootstrap(configuration Configuration) error {
 	r.setCurrentTerm(1)
 	r.setLastLog(entry.Index, entry.Term)
 	r.processConfigurationLogEntry(&entry)
+
+	// Feiran
+	r.initTargetPriority(configuration)
+
 	return nil
 }
 
@@ -277,6 +281,9 @@ func (r *Raft) runCandidate() {
 				r.logger.Printf("[INFO] raft: Election won. Tally: %d", grantedVotes)
 				r.setState(Leader)
 				r.setLeader(r.localAddr)
+				// Feiran
+				r.resetTargetPriority()
+				r.isResigning = false
 				return
 			}
 
@@ -307,6 +314,8 @@ func (r *Raft) runCandidate() {
 			// Election failed! Restart the election. We simply return,
 			// which will kick us back into runCandidate
 			r.logger.Printf("[WARN] raft: Election timeout reached, restarting election")
+			// Feiran
+			r.decayTargetPriority()
 			return
 
 		case <-r.shutdownCh:
@@ -675,7 +684,8 @@ func (r *Raft) checkLeaderLease() time.Duration {
 			if diff <= 3*r.conf.LeaderLeaseTimeout {
 				r.logger.Printf("[WARN] raft: Failed to contact %v in %v", peer, diff)
 			} else {
-				r.logger.Printf("[DEBUG] raft: Failed to contact %v in %v", peer, diff)
+				// Feiran
+				// r.logger.Printf("[DEBUG] raft: Failed to contact %v in %v", peer, diff)
 			}
 		}
 		metrics.AddSample([]string{"raft", "leader", "lastContact"}, float32(diff/time.Millisecond))
@@ -1127,6 +1137,8 @@ func (r *Raft) appendEntries(rpc RPC, a *AppendEntriesRequest) {
 	// Everything went well, set success
 	resp.Success = true
 	r.setLastContact()
+	// Feiran
+	r.resetTargetPriority()
 	return
 }
 
@@ -1139,6 +1151,8 @@ func (r *Raft) processConfigurationLogEntry(entry *Log) {
 		r.configurations.committedIndex = r.configurations.latestIndex
 		r.configurations.latest = decodeConfiguration(entry.Data)
 		r.configurations.latestIndex = entry.Index
+		// Feiran
+		r.initTargetPriority(decodeConfiguration(entry.Data))
 	} else if entry.Type == LogAddPeerDeprecated || entry.Type == LogRemovePeerDeprecated {
 		r.configurations.committed = r.configurations.latest
 		r.configurations.committedIndex = r.configurations.latestIndex
@@ -1224,6 +1238,17 @@ func (r *Raft) requestVote(rpc RPC, req *RequestVoteRequest) {
 		r.logger.Printf("[WARN] raft: Rejecting vote request from %v since our last index is greater (%d, %d)",
 			candidate, lastIdx, req.LastLogIndex)
 		return
+	}
+
+	// Feiran
+	// reject if it does not reach target priority
+	for _, server := range r.configurations.latest.Servers {
+		if server.Address == candidate && server.Priority < r.targetPriority {
+			r.logger.Printf("[WARN] raft: Rejecting vote request from %v since our target priority is greater (%d, %d)",
+				candidate, server.Priority, r.targetPriority)
+			r.decayTargetPriority()
+			return
+		}
 	}
 
 	// Persist a vote for safety
@@ -1467,4 +1492,36 @@ func (r *Raft) setState(state RaftState) {
 	if oldState != state {
 		r.observe(state)
 	}
+}
+
+// Feiran
+// initPriority computes the max priority in configuration,
+// used after a configuration change
+func (r *Raft) initTargetPriority(configuration Configuration) {
+	for _, conf := range configuration.Servers {
+		if conf.Priority > r.maxPriority {
+			r.maxPriority = conf.Priority
+		}
+	}
+	r.targetPriority = r.maxPriority
+}
+
+// Feiran
+func (r *Raft) resetTargetPriority() {
+	r.targetPriority = r.maxPriority
+}
+
+// Feiran
+func (r *Raft) decayTargetPriority() {
+	gap := r.targetPriority / 5
+	if gap < 5 {
+		gap = 5
+	}
+
+	targetPriority := r.targetPriority - gap
+	if targetPriority < 1 {
+		targetPriority = 1
+	}
+	r.targetPriority = targetPriority
+	r.logger.Printf("[DEBUG] raft: decay target priority to %v\n", r.targetPriority)
 }

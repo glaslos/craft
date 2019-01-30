@@ -191,7 +191,11 @@ START:
 	// Make the RPC call
 	start = time.Now()
 	if err := r.trans.AppendEntries(s.peer.ID, s.peer.Address, &req, &resp); err != nil {
-		r.logger.Printf("[ERR] raft: Failed to AppendEntries to %v: %v", s.peer, err)
+		// Feiran
+		// avoid too much logging
+		if s.failures < 2 {
+			r.logger.Printf("[ERR] raft: Failed to AppendEntries to %v: %v", s.peer, err)
+		}
 		s.failures++
 		return
 	}
@@ -353,7 +357,10 @@ func (r *Raft) heartbeat(s *followerReplication, stopCh chan struct{}) {
 
 		start := time.Now()
 		if err := r.trans.AppendEntries(s.peer.ID, s.peer.Address, &req, &resp); err != nil {
-			r.logger.Printf("[ERR] raft: Failed to heartbeat to %v: %v", s.peer.Address, err)
+			// Feiran
+			if failures < 2 {
+				r.logger.Printf("[ERR] raft: Failed to heartbeat to %v: %v", s.peer.Address, err)
+			}
 			failures++
 			select {
 			case <-time.After(backoff(failureWait, failures, maxFailureScale)):
@@ -364,6 +371,18 @@ func (r *Raft) heartbeat(s *followerReplication, stopCh chan struct{}) {
 			failures = 0
 			metrics.MeasureSince([]string{"raft", "replication", "heartbeat", string(s.peer.ID)}, start)
 			s.notifyAll(resp.Success)
+
+			// Feiran
+			if s.peer.Priority > r.priority {
+				r.logger.Printf("[DEBUG] raft: peer %v has higher priority than mine (%v, %v), prepare to step down\n",
+					s.peer.Address, s.peer.Priority, r.priority)
+				r.isResigning = true
+			}
+			lastIndex := r.getLastIndex()
+			// step down if a follwer has higher priority and its log is up-to-date
+			if r.isResigning && s.peer.Priority > r.priority && s.nextIndex >= lastIndex {
+				r.stepDown(s)
+			}
 		}
 	}
 }
@@ -565,4 +584,11 @@ func updateLastAppended(s *followerReplication, req *AppendEntriesRequest) {
 
 	// Notify still leader
 	s.notifyAll(true)
+}
+
+// Feiran
+func (r *Raft) stepDown(s *followerReplication) {
+	r.logger.Printf("[DEBUG] raft: stepping down from leader\n")
+	s.notifyAll(false) // No longer leader
+	asyncNotifyCh(s.stepDown)
 }

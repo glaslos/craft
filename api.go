@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/armon/go-metrics"
+	"gitlab.com/feiranwang/echo/merger"
 )
 
 var (
@@ -156,6 +157,21 @@ type Raft struct {
 	// is indexed by an artificial ID which is used for deregistration.
 	observersLock sync.RWMutex
 	observers     map[uint64]*Observer
+
+	// Feiran
+	groupID int
+	localIDInt int
+	merger *merger.Merger
+	// replicas on the same server
+	localReplicas []*Raft
+	// max assigned timestamp
+	maxTimestamp int64
+	// resigning leader
+	isResigning bool
+	// election priority
+	priority int
+	maxPriority int
+	targetPriority int
 }
 
 // BootstrapCluster initializes a server's storage with the given cluster
@@ -461,6 +477,13 @@ func NewRaft(conf *Config, fsm FSM, logs LogStore, stable StableStore, snaps Sna
 		configurationsCh:      make(chan *configurationsFuture, 8),
 		bootstrapCh:           make(chan *bootstrapFuture),
 		observers:             make(map[uint64]*Observer),
+
+		// Feiran
+		groupID: conf.GroupID,
+		localIDInt: conf.LocalIDInt,
+		priority: conf.Priority,
+		maxPriority: conf.Priority,
+		targetPriority: 1,
 	}
 
 	// Initialize as a follower.
@@ -500,6 +523,11 @@ func NewRaft(conf *Config, fsm FSM, logs LogStore, stable StableStore, snaps Sna
 	// blocking where possible. It MUST be safe for this
 	// to be called concurrently with a blocking RPC.
 	trans.SetHeartbeatHandler(r.processHeartbeat)
+
+	// Feiran
+	// this flag is set when a higher priority follower is found
+	// leader stops processing new requests, and steps down when appropriate
+	r.isResigning = false
 
 	// Start the background work.
 	r.goFunc(r.run)
@@ -604,6 +632,12 @@ func (r *Raft) Apply(cmd []byte, timeout time.Duration) ApplyFuture {
 	var timer <-chan time.Time
 	if timeout > 0 {
 		timer = time.After(timeout)
+	}
+
+	// Feiran
+	// reject request if the leader is in passive state
+	if r.isResigning {
+		return errorFuture{ErrRaftShutdown}
 	}
 
 	// Create a log future, no index or term yet
