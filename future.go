@@ -36,6 +36,11 @@ type ApplyFuture interface {
 	// by the FSM.Apply method. This must not be called
 	// until after the Error method has returned.
 	Response() interface{}
+	// Feiran
+	// Wait waits for a log entry gets executed
+	Wait()
+	// complete notifies the completion of execution
+	complete()
 }
 
 // ConfigurationFuture is used for GetConfiguration and can return the
@@ -75,16 +80,24 @@ func (e errorFuture) Index() uint64 {
 	return 0
 }
 
+// Feiran
+func (e errorFuture) Wait() {}
+func (e errorFuture) complete() {}
+
 // deferError can be embedded to allow a future
 // to provide an error in the future.
 type deferError struct {
 	err       error
 	errCh     chan error
 	responded bool
+	// Feiran
+	done chan struct{}
 }
 
 func (d *deferError) init() {
 	d.errCh = make(chan error, 1)
+	// Feiran
+	d.done = make(chan struct{}, 1)
 }
 
 func (d *deferError) Error() error {
@@ -145,6 +158,18 @@ func (l *logFuture) Response() interface{} {
 
 func (l *logFuture) Index() uint64 {
 	return l.log.Index
+}
+
+// Feiran
+// complete is called when the entry is executed
+func (l *logFuture) complete() {
+	l.done <- struct{}{}
+}
+
+// Feiran
+// Wait waits for execution
+func (l *logFuture) Wait() {
+	<-l.done
 }
 
 type shutdownFuture struct {

@@ -29,6 +29,11 @@ type FSM interface {
 	// concurrently with any other command. The FSM must discard all previous
 	// state.
 	Restore(io.ReadCloser) error
+
+	// Feiran
+	// Apply2 is same as Apply with a callback function that is bind to the 
+	// respond function of the log future
+	Apply2(*Log, func()) interface{}
 }
 
 // FSMSnapshot is returned by an FSM in response to a Snapshot
@@ -54,7 +59,14 @@ func (r *Raft) runFSM() {
 		var resp interface{}
 		if req.log.Type == LogCommand {
 			start := time.Now()
-			resp = r.fsm.Apply(req.log)
+			// Feiran
+			// resp = r.fsm.Apply(req.log)
+			if req.future != nil {
+				resp = r.fsm.Apply2(req.log, req.future.complete)
+			} else {
+				resp = r.fsm.Apply2(req.log, nil)
+			}
+			
 			metrics.MeasureSince([]string{"raft", "fsm", "apply"}, start)
 		}
 
@@ -66,6 +78,11 @@ func (r *Raft) runFSM() {
 		if req.future != nil {
 			req.future.response = resp
 			req.future.respond(nil)
+			// Feiran
+			// single group, execution is completed
+			if len(r.localReplicas) <= 1 {
+				req.future.complete()
+			}
 		}
 	}
 
