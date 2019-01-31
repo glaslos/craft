@@ -7,6 +7,7 @@ import (
 	"io"
 	"io/ioutil"
 	"time"
+	"sync/atomic"
 
 	"github.com/armon/go-metrics"
 )
@@ -1070,6 +1071,20 @@ func (r *Raft) appendEntries(rpc RPC, a *AppendEntriesRequest) {
 	if len(a.Entries) > 0 {
 		start := time.Now()
 
+		// Feiran
+		if !r.isSyncRequest(a) {
+			// every local leader replica on this server sends a sync request
+			for _, replica := range r.localReplicas {
+				// the local leader has a smaller timestamp,
+				// need to add a sync entry to unblock my group
+				maxTimestamp := atomic.LoadInt64(&replica.maxTimestamp)
+				if replica != r && replica.raftState.getState() == Leader && 
+					maxTimestamp < a.Entries[len(a.Entries) - 1].Timestamp {
+					replica.addSyncEntry()
+				}
+			}
+		}
+
 		// Delete any conflicting entries, skip any duplicates
 		lastLogIdx, _ := r.getLastLog()
 		var newEntries []*Log
@@ -1527,4 +1542,21 @@ func (r *Raft) decayTargetPriority() {
 	}
 	r.targetPriority = targetPriority
 	r.logger.Printf("[DEBUG] raft: decay target priority to %v\n", r.targetPriority)
+}
+
+// Feiran
+// addSyncEntry adds a no-op entry for updating safe time
+func (r *Raft) addSyncEntry() {
+	r.Apply(make([]byte, 0), time.Second)
+}
+
+// Feiran
+func (r *Raft) isSyncRequest(a *AppendEntriesRequest) bool {
+	ret := true
+	for _, entry := range a.Entries {
+		if len(entry.Data) > 0 {
+			ret = false
+		}
+	}
+	return ret
 }

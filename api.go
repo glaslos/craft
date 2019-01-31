@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"sync"
 	"time"
+	"sync/atomic"
 
 	"github.com/armon/go-metrics"
 	"gitlab.com/feiranwang/echo/merger"
@@ -635,10 +636,12 @@ func (r *Raft) Apply(cmd []byte, timeout time.Duration) ApplyFuture {
 
 	// Feiran
 	// reject request if the leader is in passive state
-	if r.isResigning {
+	// sync request should still go through
+	if r.isResigning && len(cmd) > 0 {
 		return errorFuture{ErrRaftShutdown}
 	}
 	timestamp := time.Now().UnixNano()
+	atomic.StoreInt64(&r.maxTimestamp, timestamp)
 
 	// Create a log future, no index or term yet
 	logFuture := &logFuture{
