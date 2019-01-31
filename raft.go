@@ -530,6 +530,12 @@ func (r *Raft) leaderLoop() {
 				}
 			}
 
+			// Feiran
+			// notify peers to commit
+			for _, f := range r.leaderState.replState {
+				asyncNotifyCh(f.triggerCh)
+			}
+
 			for {
 				e := r.leaderState.inflight.Front()
 				if e == nil {
