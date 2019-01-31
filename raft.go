@@ -1131,6 +1131,9 @@ func (r *Raft) appendEntries(rpc RPC, a *AppendEntriesRequest) {
 			// Update the lastLog
 			last := newEntries[n-1]
 			r.setLastLog(last.Index, last.Term)
+
+			// Feiran
+			atomic.StoreInt64(&r.maxTimestamp, newEntries[n - 1].Timestamp)
 		}
 
 		metrics.MeasureSince([]string{"raft", "rpc", "appendEntries", "storeLogs"}, start)

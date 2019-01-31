@@ -50,6 +50,11 @@ var (
 	// ErrCantBootstrap is returned when attempt is made to bootstrap a
 	// cluster that already has state present.
 	ErrCantBootstrap = errors.New("bootstrap only works on new clusters")
+
+	// Feiran
+	// ErrRejected is returned when the leader rejects requests because
+	// it is stepping down, or is waiting out clock error
+	ErrRejected = errors.New("leader rejects the request")
 )
 
 // Raft implements a Raft node.
@@ -165,7 +170,7 @@ type Raft struct {
 	merger *merger.Merger
 	// replicas on the same server
 	localReplicas []*Raft
-	// max assigned timestamp
+	// max timestamp assigned (for leader), or seen (for follower) so far
 	maxTimestamp int64
 	// resigning leader
 	isResigning bool
@@ -638,9 +643,13 @@ func (r *Raft) Apply(cmd []byte, timeout time.Duration) ApplyFuture {
 	// reject request if the leader is in passive state
 	// sync request should still go through
 	if r.isResigning && len(cmd) > 0 {
-		return errorFuture{ErrRaftShutdown}
+		return errorFuture{ErrRejected}
 	}
 	timestamp := time.Now().UnixNano()
+	maxTimestamp := atomic.LoadInt64(&r.maxTimestamp)
+	if timestamp > maxTimestamp {
+		return errorFuture{ErrRejected}
+	}
 	atomic.StoreInt64(&r.maxTimestamp, timestamp)
 
 	// Create a log future, no index or term yet
