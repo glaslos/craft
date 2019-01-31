@@ -489,6 +489,7 @@ func NewRaft(conf *Config, fsm FSM, logs LogStore, stable StableStore, snaps Sna
 		priority: 1,
 		maxPriority: 1,
 		targetPriority: 1,
+		maxTimestamp: 0,
 	}
 
 	// Initialize as a follower.
@@ -643,11 +644,14 @@ func (r *Raft) Apply(cmd []byte, timeout time.Duration) ApplyFuture {
 	// reject request if the leader is in passive state
 	// sync request should still go through
 	if r.isResigning && len(cmd) > 0 {
+		r.logger.Printf("[DEBUG] raft: reject request because leader is stepping down\n")
 		return errorFuture{ErrRejected}
 	}
 	timestamp := time.Now().UnixNano()
 	maxTimestamp := atomic.LoadInt64(&r.maxTimestamp)
-	if timestamp > maxTimestamp {
+	if timestamp < maxTimestamp {
+		r.logger.Printf("[DEBUG] raft: reject request because timestamp is smaller than max seen so far (%v, %v)",
+			timestamp, maxTimestamp)
 		return errorFuture{ErrRejected}
 	}
 	atomic.StoreInt64(&r.maxTimestamp, timestamp)
