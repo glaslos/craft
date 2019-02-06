@@ -1613,11 +1613,14 @@ func (r *Raft) nextSafeTime(server ServerID) int64 {
 	ts := time.Now().UnixNano()
 	if r.getState() == Leader {
 		index := r.leaderState.commitment.getMatchIndexForServer(server)
-		var entry Log
-		if err := r.logs.GetLog(index + 1, &entry); err != nil {
-			return 0
+		r.logger.Printf("[DEBUG] fast update: server %v, match index %v\n", server, index)
+		if index < r.getLastIndex() {
+			var entry Log
+			if err := r.logs.GetLog(index + 1, &entry); err != nil {
+				return 0
+			}
+			ts = entry.Timestamp
 		}
-		ts = entry.Timestamp
 	}
 	return ts
 }
