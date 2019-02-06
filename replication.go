@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sync"
 	"time"
+	"sort"
 
 	"github.com/armon/go-metrics"
 )
@@ -215,6 +216,9 @@ START:
 		// Update our replication state
 		updateLastAppended(s, &req)
 
+		// Feiran
+		r.handleFastUpdate(s, &resp)
+
 		// Clear any failures, allow pipelining
 		s.failures = 0
 		s.allowPipeline = true
@@ -379,6 +383,7 @@ func (r *Raft) heartbeat(s *followerReplication, stopCh chan struct{}) {
 				r.isResigning = true
 			}
 			lastIndex := r.getLastIndex()
+			// Feiran
 			// step down if a follwer has higher priority and its log is up-to-date
 			if r.isResigning && s.peer.Priority > r.priority && s.nextIndex >= lastIndex {
 				r.stepDown(s)
@@ -492,6 +497,9 @@ func (r *Raft) pipelineDecode(s *followerReplication, p AppendPipeline, stopCh, 
 
 			// Update our replication state
 			updateLastAppended(s, req)
+
+			// Feiran
+			r.handleFastUpdate(s, resp)
 		case <-stopCh:
 			return
 		}
@@ -592,3 +600,65 @@ func (r *Raft) stepDown(s *followerReplication) {
 	s.notifyAll(false) // No longer leader
 	asyncNotifyCh(s.stepDown)
 }
+
+// Feiran
+func (r *Raft) handleFastUpdate(s *followerReplication, resp *AppendEntriesResponse) {
+	nGroups := len(r.localReplicas)
+	if len(resp.LocalTerms) != nGroups || len(r.fastUpdateInfo) != nGroups {
+		return
+	}
+
+	respPeerID := s.peer.ID
+	for i, replica := range r.localReplicas {
+		// skip ourself
+		if replica == r {
+			continue
+		}
+		groupInfo := r.fastUpdateInfo[i]
+		localTerm := replica.getCurrentTerm()
+		
+		// leader must agree on the term
+		var leaderID ServerID
+		for _, server := range replica.configurations.latest.Servers {
+			if server.Address == replica.leader {
+				leaderID = server.ID
+			}
+		}
+		if groupInfo[leaderID].term != localTerm {
+			continue
+		}
+
+		// stale info
+		if resp.NextSafeTimes[i] < groupInfo[respPeerID].nextSafeTime {
+			continue
+		}
+
+		// local info
+		groupInfo[r.localID].term = localTerm
+		groupInfo[r.localID].nextSafeTime = replica.nextSafeTime(replica.localID)
+		
+		// resp info
+		groupInfo[respPeerID].term = resp.LocalTerms[i]
+		groupInfo[respPeerID].nextSafeTime = resp.NextSafeTimes[i]
+
+		// check and update safe time if possible
+		var safeTimes []int64
+		for _, v := range groupInfo {
+			if v.term == localTerm {
+				safeTimes = append(safeTimes, v.nextSafeTime)
+			}
+		}
+
+		if len(safeTimes) >= replica.quorumSize() {
+			sort.Sort(int64Slice(safeTimes))
+			newSafeTime := safeTimes[replica.quorumSize() - 1]
+			r.merger.UpdateSafeTime(i, newSafeTime)
+		}
+	}
+}
+
+type int64Slice []int64
+
+func (p int64Slice) Len() int           { return len(p) }
+func (p int64Slice) Less(i, j int) bool { return p[i] < p[j] }
+func (p int64Slice) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }

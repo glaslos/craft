@@ -57,6 +57,10 @@ type AppendEntriesResponse struct {
 	// There are scenarios where this request didn't succeed
 	// but there's no need to wait/back-off the next attempt.
 	NoRetryBackoff bool
+
+	// Feiran
+	LocalTerms []uint64
+	NextSafeTimes []int64
 }
 
 // See WithRPCHeader.

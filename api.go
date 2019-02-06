@@ -177,6 +177,8 @@ type Raft struct {
 	priority int
 	maxPriority int
 	targetPriority int
+	// fast update
+	fastUpdateInfo []map[ServerID]*fastUpdateInfo
 }
 
 // BootstrapCluster initializes a server's storage with the given cluster

@@ -99,3 +99,10 @@ func (c *commitment) recalculate() {
 		asyncNotifyCh(c.commitCh)
 	}
 }
+
+// Feiran
+func (c *commitment) getMatchIndexForServer(server ServerID) uint64 {
+	c.Lock()
+	defer c.Unlock()
+	return c.matchIndexes[server]
+}

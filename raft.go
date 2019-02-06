@@ -237,6 +237,7 @@ func (r *Raft) liveBootstrap(configuration Configuration) error {
 
 	// Feiran
 	r.initPriority(configuration)
+	r.initFastUpdate(configuration)
 
 	return nil
 }
@@ -1084,7 +1085,7 @@ func (r *Raft) appendEntries(rpc RPC, a *AppendEntriesRequest) {
 				// the local leader has a smaller timestamp,
 				// need to add a sync entry to unblock my group
 				maxTimestamp := atomic.LoadInt64(&replica.maxTimestamp)
-				if replica != r && replica.raftState.getState() == Leader && 
+				if replica != r && replica.getState() == Leader && 
 					maxTimestamp < a.Entries[len(a.Entries) - 1].Timestamp {
 					replica.addSyncEntry()
 				}
@@ -1158,6 +1159,40 @@ func (r *Raft) appendEntries(rpc RPC, a *AppendEntriesRequest) {
 		metrics.MeasureSince([]string{"raft", "rpc", "appendEntries", "processLogs"}, start)
 	}
 
+	// Feiran
+	// fast update info
+	if len(r.localReplicas) > 1 && len(a.Entries) > 0 && !r.isSyncRequest(a) && r.isLogCommands(a) {
+		peer := ServerAddress(r.trans.DecodePeer(a.Leader))
+		localTerms := make([]uint64, len(r.localReplicas))
+		nextSafeTimes := make([]int64, len(r.localReplicas))
+
+		var peerID ServerID
+		for _, server := range r.configurations.latest.Servers {
+			if server.Address == peer {
+				peerID = server.ID
+				break
+			}
+		}
+
+		count := 0
+		// use local commit indexes, might be stale
+		// another option is to include commit indexes in the request,
+		// which increases the message size
+		for i, replica := range r.localReplicas {
+			localTerms[i] = replica.getCurrentTerm()
+			nextSafeTime := replica.nextSafeTime(peerID)
+			nextSafeTimes[i] = nextSafeTime
+			if nextSafeTime > 0 {
+				count++
+			}
+		}
+
+		if count == len(r.localReplicas) {
+			resp.LocalTerms = localTerms
+			resp.NextSafeTimes = nextSafeTimes
+		}
+	}
+
 	// Everything went well, set success
 	resp.Success = true
 	r.setLastContact()
@@ -1176,7 +1211,9 @@ func (r *Raft) processConfigurationLogEntry(entry *Log) {
 		r.configurations.latest = decodeConfiguration(entry.Data)
 		r.configurations.latestIndex = entry.Index
 		// Feiran
-		r.initPriority(decodeConfiguration(entry.Data))
+		configuration := decodeConfiguration(entry.Data)
+		r.initPriority(configuration)
+		r.initFastUpdate(configuration)
 	} else if entry.Type == LogAddPeerDeprecated || entry.Type == LogRemovePeerDeprecated {
 		r.configurations.committed = r.configurations.latest
 		r.configurations.committedIndex = r.configurations.latestIndex
@@ -1564,6 +1601,49 @@ func (r *Raft) isSyncRequest(a *AppendEntriesRequest) bool {
 	ret := true
 	for _, entry := range a.Entries {
 		if len(entry.Data) > 0 {
+			ret = false
+		}
+	}
+	return ret
+}
+
+// Feiran
+// nextSafeTime calculates the next safe time for the given server
+func (r *Raft) nextSafeTime(server ServerID) int64 {
+	ts := time.Now().UnixNano()
+	if r.getState() == Leader {
+		index := r.leaderState.commitment.getMatchIndexForServer(server)
+		var entry Log
+		if err := r.logs.GetLog(index + 1, &entry); err != nil {
+			return 0
+		}
+		ts = entry.Timestamp
+	}
+	return ts
+}
+
+// Feiran
+type fastUpdateInfo struct {
+	term uint64
+	nextSafeTime int64
+}
+
+// Feiran
+func (r *Raft) initFastUpdate(configuration Configuration) {
+	r.fastUpdateInfo = make([]map[ServerID]*fastUpdateInfo, len(r.localReplicas))
+	for i := 0; i < len(r.fastUpdateInfo); i++ {
+		r.fastUpdateInfo[i] = make(map[ServerID]*fastUpdateInfo)
+		for _, server := range configuration.Servers {
+			r.fastUpdateInfo[i][server.ID] = new(fastUpdateInfo)
+		}
+	}
+}
+
+// Feiran
+func (r *Raft) isLogCommands(a *AppendEntriesRequest) bool {
+	ret := true
+	for _, entry := range a.Entries {
+		if entry.Type != LogCommand {
 			ret = false
 		}
 	}
