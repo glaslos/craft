@@ -166,7 +166,6 @@ type Raft struct {
 
 	// Feiran
 	groupID int
-	localIDInt int
 	merger *merger.Merger
 	// replicas on the same server
 	localReplicas []*Raft
@@ -485,7 +484,6 @@ func NewRaft(conf *Config, fsm FSM, logs LogStore, stable StableStore, snaps Sna
 		observers:             make(map[uint64]*Observer),
 
 		// Feiran
-		localIDInt: conf.LocalIDInt,
 		priority: 1,
 		maxPriority: 1,
 		targetPriority: 1,
