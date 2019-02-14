@@ -81,7 +81,7 @@ func (e errorFuture) Index() uint64 {
 }
 
 // Feiran
-func (e errorFuture) Wait() {}
+func (e errorFuture) Wait()     {}
 func (e errorFuture) complete() {}
 
 // deferError can be embedded to allow a future
@@ -163,7 +163,7 @@ func (l *logFuture) Index() uint64 {
 // Feiran
 // complete is called when the entry is executed
 func (l *logFuture) complete() {
-	l.done <- struct{}{}
+	asyncNotifyCh(l.done)
 }
 
 // Feiran
