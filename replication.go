@@ -604,7 +604,7 @@ func (r *Raft) stepDown(s *followerReplication) {
 // Feiran
 func (r *Raft) handleFastUpdate(s *followerReplication, resp *AppendEntriesResponse) {
 	nGroups := len(r.localReplicas)
-	if len(resp.LocalTerms) != nGroups || len(r.fastUpdateInfo) != nGroups {
+	if len(resp.LocalTerms) != nGroups || len(r.fastUpdateInfo) != len(r.configurations.latest.Servers) {
 		return
 	}
 
