@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"sync"
 	"time"
-	"sync/atomic"
+	// "sync/atomic"
 
 	"github.com/armon/go-metrics"
 	"gitlab.com/feiranwang/echo/merger"
@@ -179,6 +179,7 @@ type Raft struct {
 	targetPriority int
 	// fast update
 	fastUpdateInfo []map[ServerID]*fastUpdateInfo
+	timeLock sync.Mutex
 }
 
 // BootstrapCluster initializes a server's storage with the given cluster
@@ -647,14 +648,16 @@ func (r *Raft) Apply(cmd []byte, timeout time.Duration) ApplyFuture {
 		r.logger.Printf("[DEBUG] raft: reject request because leader is stepping down\n")
 		return errorFuture{ErrRejected}
 	}
+	r.timeLock.Lock()
+	maxTimestamp := r.maxTimestamp
 	timestamp := time.Now().UnixNano()
-	maxTimestamp := atomic.LoadInt64(&r.maxTimestamp)
 	if timestamp < maxTimestamp {
 		r.logger.Printf("[DEBUG] raft: reject request because timestamp is smaller than max seen so far (%v, %v)",
 			timestamp, maxTimestamp)
 		return errorFuture{ErrRejected}
 	}
-	atomic.StoreInt64(&r.maxTimestamp, timestamp)
+	r.maxTimestamp = timestamp
+	r.timeLock.Unlock()
 
 	// Create a log future, no index or term yet
 	logFuture := &logFuture{
@@ -1064,4 +1067,9 @@ func (r *Raft) SetupGroups(groupID int, localReplicas []*Raft, merger *merger.Me
 	r.groupID = groupID
 	r.merger = merger
 	r.localReplicas = localReplicas
+}
+
+// IsLeader returns whether the replica is leader
+func (r *Raft) IsLeader() bool {
+	return r.getState() == Leader
 }

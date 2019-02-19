@@ -641,7 +641,7 @@ func (r *Raft) handleFastUpdate(s *followerReplication, resp *AppendEntriesRespo
 			continue
 		}
 
-		r.logger.Printf("[DEBUG] fast update: group %v, ts %v\n", i, formatTimestamp(resp.NextSafeTimes[i]))
+		// r.logger.Printf("[DEBUG] fast update: group %v, ts %v\n", i, formatTimestamp(resp.NextSafeTimes[i]))
 
 		// check and update safe time if possible
 		var safeTimes []int64
@@ -654,6 +654,7 @@ func (r *Raft) handleFastUpdate(s *followerReplication, resp *AppendEntriesRespo
 		if len(safeTimes) >= replica.quorumSize() {
 			sort.Sort(int64Slice(safeTimes))
 			newSafeTime := safeTimes[replica.quorumSize() - 1]
+			// r.logger.Printf("[DEBUG] fast update: group %v new safe time %v\n", i, formatTimestamp(newSafeTime))
 			r.merger.UpdateSafeTime(i, newSafeTime)
 		}
 	}
@@ -664,7 +665,3 @@ type int64Slice []int64
 func (p int64Slice) Len() int           { return len(p) }
 func (p int64Slice) Less(i, j int) bool { return p[i] < p[j] }
 func (p int64Slice) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }
-
-func formatTimestamp(ts int64) string {
-	return time.Unix(0, ts).Format("2006-01-02 15:04:05")
-}

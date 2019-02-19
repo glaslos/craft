@@ -1140,7 +1140,9 @@ func (r *Raft) appendEntries(rpc RPC, a *AppendEntriesRequest) {
 			r.setLastLog(last.Index, last.Term)
 
 			// Feiran
-			atomic.StoreInt64(&r.maxTimestamp, newEntries[n - 1].Timestamp)
+			r.timeLock.Lock()
+			r.maxTimestamp = newEntries[n - 1].Timestamp
+			r.timeLock.Unlock()
 		}
 
 		metrics.MeasureSince([]string{"raft", "rpc", "appendEntries", "storeLogs"}, start)
@@ -1613,7 +1615,7 @@ func (r *Raft) nextSafeTime(server ServerID) int64 {
 	ts := time.Now().UnixNano()
 	if r.getState() == Leader {
 		index := r.leaderState.commitment.getMatchIndexForServer(server)
-		r.logger.Printf("[DEBUG] fast update: server %v, match index %v\n", server, index)
+		// r.logger.Printf("[DEBUG] fast update: server %v, match index %v\n", server, index)
 		if index < r.getLastIndex() {
 			var entry Log
 			if err := r.logs.GetLog(index + 1, &entry); err != nil {
@@ -1651,4 +1653,9 @@ func (r *Raft) isLogCommands(a *AppendEntriesRequest) bool {
 		}
 	}
 	return ret
+}
+
+// Feiran
+func formatTimestamp(t int64) string {
+	return time.Unix(0, t).Format("15:04:05.000000")
 }
