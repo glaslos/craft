@@ -389,6 +389,11 @@ func (r *Raft) heartbeat(s *followerReplication, stopCh chan struct{}) {
 				r.stepDown(s)
 			}
 		}
+
+		// Feiran
+		if r.merger.NeedSync() {
+			r.addSyncEntry()
+		}
 	}
 }
 
