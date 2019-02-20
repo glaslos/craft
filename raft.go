@@ -1624,24 +1624,33 @@ func (r *Raft) isSyncRequest(a *AppendEntriesRequest) bool {
 // Feiran
 // nextSafeTime calculates the next safe time for the given server
 func (r *Raft) nextSafeTime(server ServerID) int64 {
-	if r.getState() == Candidate {
+	switch r.getState() {
+	case Candidate:
+		return 0
+	case Follower:
+		return getTimestamp()
+	case Leader:
+		matchIndex := r.leaderState.commitment.getMatchIndexForServer(server)
+		ts := int64(0)
+		if matchIndex < r.getLastIndex() {
+			var entry Log
+			if err := r.logs.GetLog(matchIndex, &entry); err != nil {
+				ts = 0
+			}
+			// r.logger.Printf("[DEBUG] fast update: server %v, match index %v, next entry ts %v\n", server, matchIndex,
+			// 	formatTimestamp(entry.Timestamp))
+			if getUncertaintyFromTimestamp(entry.Timestamp) < r.conf.MaxClockUncertainty {
+				ts = entry.Timestamp - 10
+			} else {
+				ts = 0
+			}
+		} else {
+			ts = 0
+		}
+		return ts
+	default:
 		return 0
 	}
-	ts := getTimestamp()
-	if r.getState() == Leader {
-		index := r.leaderState.commitment.getMatchIndexForServer(server)
-		// r.logger.Printf("[DEBUG] fast update: server %v, match index %v\n", server, index)
-		if index < r.getLastIndex() {
-			var entry Log
-			if err := r.logs.GetLog(index+1, &entry); err != nil {
-				return 0
-			}
-			if getUncertaintyFromTimestamp(entry.Timestamp) < r.conf.MaxClockUncertainty {
-				ts = entry.Timestamp
-			}
-		}
-	}
-	return ts
 }
 
 // Feiran
