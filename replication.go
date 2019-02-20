@@ -663,7 +663,7 @@ func (r *Raft) handleFastUpdate(s *followerReplication, resp *AppendEntriesRespo
 			sort.Sort(int64Slice(safeTimes))
 			newSafeTime := safeTimes[replica.quorumSize() - 1]
 			// r.logger.Printf("[DEBUG] fast update: group %v new safe time %v\n", i, formatTimestamp(newSafeTime))
-			r.merger.UpdateSafeTime(i, newSafeTime)
+			r.merger.UpdateSafeTime(i, newSafeTime, true)
 		}
 	}
 }
