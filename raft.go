@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"time"
-	"sync/atomic"
 	"math"
+	"sync/atomic"
+	"time"
 
 	"github.com/armon/go-metrics"
 	"gitlab.com/feiranwang/echo/clock"
@@ -1097,8 +1097,8 @@ func (r *Raft) appendEntries(rpc RPC, a *AppendEntriesRequest) {
 				// the local leader has a smaller timestamp,
 				// need to add a sync entry to unblock my group
 				maxTimestamp := atomic.LoadInt64(&replica.maxTimestamp)
-				if replica != r && replica.getState() == Leader && 
-					maxTimestamp < a.Entries[len(a.Entries) - 1].Timestamp {
+				if replica != r && replica.getState() == Leader &&
+					maxTimestamp < a.Entries[len(a.Entries)-1].Timestamp {
 					replica.addSyncEntry()
 				}
 			}
@@ -1153,7 +1153,7 @@ func (r *Raft) appendEntries(rpc RPC, a *AppendEntriesRequest) {
 
 			// Feiran
 			r.timeLock.Lock()
-			r.maxTimestamp = newEntries[n - 1].Timestamp
+			r.maxTimestamp = newEntries[n-1].Timestamp
 			r.timeLock.Unlock()
 		}
 
@@ -1633,7 +1633,7 @@ func (r *Raft) nextSafeTime(server ServerID) int64 {
 		// r.logger.Printf("[DEBUG] fast update: server %v, match index %v\n", server, index)
 		if index < r.getLastIndex() {
 			var entry Log
-			if err := r.logs.GetLog(index + 1, &entry); err != nil {
+			if err := r.logs.GetLog(index+1, &entry); err != nil {
 				return 0
 			}
 			if getUncertaintyFromTimestamp(entry.Timestamp) < r.conf.MaxClockUncertainty {
@@ -1646,7 +1646,7 @@ func (r *Raft) nextSafeTime(server ServerID) int64 {
 
 // Feiran
 type fastUpdateInfo struct {
-	term uint64
+	term         uint64
 	nextSafeTime int64
 }
 
@@ -1680,7 +1680,8 @@ func formatTimestamp(t int64) string {
 // Feiran
 func getTimestamp() int64 {
 	t := time.Now().UnixNano()
-	t = t / 10 * 10 + int64(clock.GetUncertaintyFactor())
+	t = t/10*10 + int64(clock.GetUncertaintyFactor())
+	t += clockOffset
 	return t
 }
 

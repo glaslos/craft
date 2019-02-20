@@ -55,6 +55,10 @@ var (
 	// ErrRejected is returned when the leader rejects requests because
 	// it is stepping down, or is waiting out clock error
 	ErrRejected = errors.New("leader rejects the request")
+
+	// clockOffsetEnv is name of environment variable of clock offset, for experiment 
+	clockOffsetEnv = "CLOCK_OFFSET"
+	clockOffset = int64(0)
 )
 
 // Raft implements a Raft node.
@@ -180,6 +184,8 @@ type Raft struct {
 	// fast update
 	fastUpdateInfo []map[ServerID]*fastUpdateInfo
 	timeLock sync.Mutex
+	// clock offset, for experiment
+	clockOffset int64
 }
 
 // BootstrapCluster initializes a server's storage with the given cluster
@@ -457,6 +463,13 @@ func NewRaft(conf *Config, fsm FSM, logs LogStore, stable StableStore, snaps Sna
 	// along with the AddPeer() and RemovePeer() APIs.
 	if protocolVersion < 3 && string(localID) != string(localAddr) {
 		return nil, fmt.Errorf("when running with ProtocolVersion < 3, LocalID must be set to the network address")
+	}
+
+	// Feiran
+	env := os.Getenv(clockOffsetEnv)
+	clockOffset, err = strconv.ParseInt(env, 10, 64)
+	if err != nil {
+		clockOffset = 0
 	}
 
 	// Create Raft struct.
