@@ -662,6 +662,10 @@ func (r *Raft) handleFastUpdate(s *followerReplication, resp *AppendEntriesRespo
 		if len(safeTimes) >= replica.quorumSize() {
 			sort.Sort(int64Slice(safeTimes))
 			newSafeTime := safeTimes[replica.quorumSize() - 1]
+			// quorum must include leader
+			if groupInfo[leaderID].nextSafeTime < newSafeTime {
+				newSafeTime = groupInfo[leaderID].nextSafeTime
+			}
 			// r.logger.Printf("[DEBUG] fast update: group %v new safe time %v\n", i, formatTimestamp(newSafeTime))
 			r.merger.UpdateSafeTime(i, newSafeTime, true)
 		}
