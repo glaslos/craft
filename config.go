@@ -193,6 +193,11 @@ type Config struct {
 	// Logger is a user-provided logger. If nil, a logger writing to LogOutput
 	// is used.
 	Logger *log.Logger
+
+	// Feiran
+	// MaxClockUncertainty is the maximum accepting clock error bound in fast update,
+	// expressed in terms of power of 10, in nanoseconds
+	MaxClockUncertainty int
 }
 
 // DefaultConfig returns a Config with usable defaults.
@@ -208,6 +213,8 @@ func DefaultConfig() *Config {
 		SnapshotInterval:   120 * time.Second,
 		SnapshotThreshold:  8192,
 		LeaderLeaseTimeout: 500 * time.Millisecond,
+		// Feiran
+		MaxClockUncertainty: 6,
 	}
 }
 

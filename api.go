@@ -648,14 +648,8 @@ func (r *Raft) Apply(cmd []byte, timeout time.Duration) ApplyFuture {
 		r.logger.Printf("[DEBUG] raft: reject request because leader is stepping down\n")
 		return errorFuture{ErrRejected}
 	}
+	timestamp := getTimestamp()
 	r.timeLock.Lock()
-	maxTimestamp := r.maxTimestamp
-	timestamp := time.Now().UnixNano()
-	if timestamp < maxTimestamp {
-		r.logger.Printf("[DEBUG] raft: reject request because timestamp is smaller than max seen so far (%v, %v)",
-			timestamp, maxTimestamp)
-		return errorFuture{ErrRejected}
-	}
 	r.maxTimestamp = timestamp
 	r.timeLock.Unlock()
 

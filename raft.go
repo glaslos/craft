@@ -8,8 +8,10 @@ import (
 	"io/ioutil"
 	"time"
 	"sync/atomic"
+	"math"
 
 	"github.com/armon/go-metrics"
+	"gitlab.com/feiranwang/echo/clock"
 )
 
 const (
@@ -286,6 +288,16 @@ func (r *Raft) runCandidate() {
 				// Feiran
 				r.resetTargetPriority()
 				r.isResigning = false
+				// wait out clock uncertainty
+				waitingTime := time.Duration(math.Pow10(r.conf.MaxClockUncertainty)) * time.Nanosecond
+				t := getTimestamp()
+				r.timeLock.Lock()
+				w := time.Duration(r.maxTimestamp - t)
+				r.timeLock.Unlock()
+				if w > waitingTime {
+					waitingTime = w
+				}
+				time.Sleep(waitingTime)
 				return
 			}
 
@@ -1612,7 +1624,10 @@ func (r *Raft) isSyncRequest(a *AppendEntriesRequest) bool {
 // Feiran
 // nextSafeTime calculates the next safe time for the given server
 func (r *Raft) nextSafeTime(server ServerID) int64 {
-	ts := time.Now().UnixNano()
+	if r.getState() == Candidate {
+		return 0
+	}
+	ts := getTimestamp()
 	if r.getState() == Leader {
 		index := r.leaderState.commitment.getMatchIndexForServer(server)
 		// r.logger.Printf("[DEBUG] fast update: server %v, match index %v\n", server, index)
@@ -1621,7 +1636,9 @@ func (r *Raft) nextSafeTime(server ServerID) int64 {
 			if err := r.logs.GetLog(index + 1, &entry); err != nil {
 				return 0
 			}
-			ts = entry.Timestamp
+			if getUncertaintyFromTimestamp(entry.Timestamp) < r.conf.MaxClockUncertainty {
+				ts = entry.Timestamp
+			}
 		}
 	}
 	return ts
@@ -1658,4 +1675,16 @@ func (r *Raft) isLogCommands(a *AppendEntriesRequest) bool {
 // Feiran
 func formatTimestamp(t int64) string {
 	return time.Unix(0, t).Format("15:04:05.000000")
+}
+
+// Feiran
+func getTimestamp() int64 {
+	t := time.Now().UnixNano()
+	t = t / 10 * 10 + int64(clock.GetUncertaintyFactor())
+	return t
+}
+
+// Feiran
+func getUncertaintyFromTimestamp(t int64) int {
+	return int(t % 10)
 }
