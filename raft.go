@@ -1637,7 +1637,7 @@ func (r *Raft) nextSafeTime(server ServerID) int64 {
 		ts := int64(0)
 		if matchIndex < r.getLastIndex() {
 			var entry Log
-			if err := r.logs.GetLog(matchIndex, &entry); err != nil {
+			if err := r.logs.GetLog(matchIndex+1, &entry); err != nil {
 				ts = 0
 			}
 			// r.logger.Printf("[DEBUG] fast update: server %v, match index %v, next entry ts %v\n", server, matchIndex,

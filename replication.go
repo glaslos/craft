@@ -649,7 +649,7 @@ func (r *Raft) handleFastUpdate(s *followerReplication, resp *AppendEntriesRespo
 			continue
 		}
 
-		// r.logger.Printf("[DEBUG] fast update: group %v, ts %v\n", i, formatTimestamp(resp.NextSafeTimes[i]))
+		// r.logger.Printf("[DEBUG] fast update: from peer %v group %v, ts %v\n", respPeerID, i, formatTimestamp(resp.NextSafeTimes[i]))
 
 		// check and update safe time if possible
 		var safeTimes []int64
@@ -668,6 +668,10 @@ func (r *Raft) handleFastUpdate(s *followerReplication, resp *AppendEntriesRespo
 			}
 			// r.logger.Printf("[DEBUG] fast update: group %v new safe time %v\n", i, formatTimestamp(newSafeTime))
 			r.merger.UpdateSafeTime(i, newSafeTime, true)
+			r.fsmMutateCh <- &commitTuple{&Log{
+				Type: LogCommand,
+				Timestamp: newSafeTime,
+			}, nil}
 		}
 	}
 }
