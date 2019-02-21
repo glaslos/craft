@@ -615,10 +615,13 @@ func (r *Raft) leaderLoop() {
 
 		case newLog := <-r.applyCh:
 			// Group commit, gather all the ready commits
+			// Feiran
+			r.assignTimestamp(newLog)
 			ready := []*logFuture{newLog}
 			for i := 0; i < r.conf.MaxAppendEntries; i++ {
 				select {
 				case newLog := <-r.applyCh:
+					r.assignTimestamp(newLog)
 					ready = append(ready, newLog)
 				default:
 					break
@@ -1638,7 +1641,7 @@ func (r *Raft) nextSafeTime(server ServerID) int64 {
 				ts = 0
 			}
 			// r.logger.Printf("[DEBUG] fast update: server %v, match index %v, next entry ts %v\n", server, matchIndex,
-			// 	formatTimestamp(entry.Timestamp))
+			// 	formatTimestamp(entry.Timestamp - 10))
 			if getUncertaintyFromTimestamp(entry.Timestamp) < r.conf.MaxClockUncertainty {
 				ts = entry.Timestamp - 10
 			} else {
@@ -1697,4 +1700,17 @@ func getTimestamp() int64 {
 // Feiran
 func getUncertaintyFromTimestamp(t int64) int {
 	return int(t % 10)
+}
+
+// Feiran
+// assign timestamps to the log, used in leader loop
+func (r *Raft)assignTimestamp(log *logFuture) {
+	timestamp := getTimestamp()
+	r.timeLock.Lock()
+	r.maxTimestamp = timestamp
+	r.timeLock.Unlock()
+
+	// r.logger.Printf("[DEBUG] raft: now %v, timestamp %v\n",
+	// 	formatTimestamp(time.Now().UnixNano()), formatTimestamp(timestamp))
+	log.log.Timestamp = timestamp
 }

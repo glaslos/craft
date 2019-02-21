@@ -661,18 +661,12 @@ func (r *Raft) Apply(cmd []byte, timeout time.Duration) ApplyFuture {
 		r.logger.Printf("[DEBUG] raft: reject request because leader is stepping down\n")
 		return errorFuture{ErrRejected}
 	}
-	timestamp := getTimestamp()
-	r.timeLock.Lock()
-	r.maxTimestamp = timestamp
-	r.timeLock.Unlock()
 
 	// Create a log future, no index or term yet
 	logFuture := &logFuture{
 		log: Log{
 			Type: LogCommand,
 			Data: cmd,
-			// Feiran
-			Timestamp: timestamp,
 		},
 	}
 	logFuture.init()
