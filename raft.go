@@ -1629,29 +1629,36 @@ func (r *Raft) nextSafeTime(index uint64) int64 {
 		maxTimestamp := atomic.LoadInt64(&r.maxTimestamp)
 		ts := getTimestamp()
 		lastIndex := r.getLastIndex()
-		if index < lastIndex {
-			var entry Log
-			i := index + 1
-			for i < lastIndex {
-				if err := r.logs.GetLog(i, &entry); err != nil {
-					ts = 0
-					break
-				}
-				if entry.Type == LogCommand && !r.isSyncEntry(entry) {
-					break;
-				}
-				i++
+		var entry Log
+
+		// find first entry after given index
+		nextIndex := index + 1
+		for ; nextIndex < lastIndex; nextIndex++ {
+			if err := r.logs.GetLog(nextIndex, &entry); err != nil {
+				ts = 0
+				break
 			}
-			// r.logger.Printf("[DEBUG] fast update: match index %v, next index %v\n", index, i)
-			if i < lastIndex && getUncertaintyFromTimestamp(entry.Timestamp) < r.conf.MaxClockUncertainty {
-				ts = entry.Timestamp - 10
+			if entry.Type == LogCommand && !r.isSyncEntry(entry) {
+				break;
 			}
+		}
+
+		// there exists an entry after given index
+		if nextIndex < lastIndex {
+			ts = entry.Timestamp - 10
+			// r.logger.Printf("[DEBUG] fast update: next safe time index %v, ts %v, entry ts\n", index, formatTimestamp(ts))
 		} else {
 			// check if there is new entry after ts
 			if atomic.LoadInt64(&r.maxTimestamp) != maxTimestamp {
 				ts = 0
 			}
+			// r.logger.Printf("[DEBUG] fast update: next safe time index %v, ts %v, using now\n", index, formatTimestamp(ts))
 		}
+
+		if getUncertaintyFromTimestamp(ts) > r.conf.MaxClockUncertainty {
+			ts = 0
+		}
+
 		return ts
 	default:
 		return 0
@@ -1710,7 +1717,7 @@ func (r *Raft)assignTimestamp(log *logFuture) {
 	timestamp := getTimestamp()
 	atomic.StoreInt64(&r.maxTimestamp, timestamp)
 
-	// r.logger.Printf("[DEBUG] raft: now %v, timestamp %v\n",
+	// r.logger.Printf("[DEBUG] raft: now %v, assigned a new timestamp %v\n",
 	// 	formatTimestamp(time.Now().UnixNano()), formatTimestamp(timestamp))
 	log.log.Timestamp = timestamp
 }

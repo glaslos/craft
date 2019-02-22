@@ -620,8 +620,8 @@ func (r *Raft) handleFastUpdate(s *followerReplication, req *AppendEntriesReques
 
 	respPeerID := s.peer.ID
 	for i, replica := range r.localReplicas {
-		// r.logger.Printf("[DEBUG] fast update: from peer %v group %v, term %v ts %v\n",
-		// 	respPeerID, i, resp.LocalTerms[i], formatTimestamp(resp.NextSafeTimes[i]))
+		// r.logger.Printf("[DEBUG] fast update: from peer %v group %v, ts %v\n",
+		// 	respPeerID, i, formatTimestamp(resp.NextSafeTimes[i]))
 		// skip ourself
 		if replica == r {
 			continue
