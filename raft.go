@@ -1178,18 +1178,10 @@ func (r *Raft) appendEntries(rpc RPC, a *AppendEntriesRequest) {
 
 	// Feiran
 	// fast update info
-	if len(r.localReplicas) > 1 && len(a.Entries) > 0 && !r.isSyncRequest(a) && r.isLogCommands(a) {
-		peer := ServerAddress(r.trans.DecodePeer(a.Leader))
+	// if len(r.localReplicas) > 1 && len(a.Entries) > 0 && !r.isSyncRequest(a) && r.isLogCommands(a) && len(a.ApplyIndexes) == len(r.localReplicas) {
+	if len(a.ApplyIndexes) == len(r.localReplicas) {
 		localTerms := make([]uint64, len(r.localReplicas))
 		nextSafeTimes := make([]int64, len(r.localReplicas))
-
-		var peerID ServerID
-		for _, server := range r.configurations.latest.Servers {
-			if server.Address == peer {
-				peerID = server.ID
-				break
-			}
-		}
 
 		count := 0
 		// use local commit indexes, might be stale
@@ -1197,7 +1189,7 @@ func (r *Raft) appendEntries(rpc RPC, a *AppendEntriesRequest) {
 		// which increases the message size
 		for i, replica := range r.localReplicas {
 			localTerms[i] = replica.getCurrentTerm()
-			nextSafeTime := replica.nextSafeTime(peerID)
+			nextSafeTime := replica.nextSafeTime(a.ApplyIndexes[i])
 			nextSafeTimes[i] = nextSafeTime
 			if nextSafeTime > 0 {
 				count++
@@ -1625,30 +1617,29 @@ func (r *Raft) isSyncRequest(a *AppendEntriesRequest) bool {
 }
 
 // Feiran
-// nextSafeTime calculates the next safe time for the given server
-func (r *Raft) nextSafeTime(server ServerID) int64 {
+// nextSafeTime calculates the next safe time after the given index
+func (r *Raft) nextSafeTime(index uint64) int64 {
 	switch r.getState() {
 	case Candidate:
 		return 0
 	case Follower:
 		return getTimestamp()
 	case Leader:
-		matchIndex := r.leaderState.commitment.getMatchIndexForServer(server)
 		ts := int64(0)
-		if matchIndex < r.getLastIndex() {
+		if index < r.getLastIndex() {
 			var entry Log
-			if err := r.logs.GetLog(matchIndex+1, &entry); err != nil {
+			if err := r.logs.GetLog(index+1, &entry); err != nil {
 				ts = 0
 			}
 			// r.logger.Printf("[DEBUG] fast update: server %v, match index %v, next entry ts %v\n", server, matchIndex,
 			// 	formatTimestamp(entry.Timestamp - 10))
 			if getUncertaintyFromTimestamp(entry.Timestamp) < r.conf.MaxClockUncertainty {
 				ts = entry.Timestamp - 10
-			} else {
-				ts = 0
 			}
-		} else {
-			ts = 0
+		} else { // TODO: check safety for this
+			r.timeLock.Lock()
+			ts = r.maxTimestamp - 10
+			r.timeLock.Unlock()
 		}
 		return ts
 	default:

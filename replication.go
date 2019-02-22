@@ -3,11 +3,11 @@ package raft
 import (
 	"errors"
 	"fmt"
+	"sort"
 	"sync"
 	"time"
-	"sort"
 
-	"github.com/armon/go-metrics"
+	metrics "github.com/armon/go-metrics"
 )
 
 const (
@@ -217,7 +217,7 @@ START:
 		updateLastAppended(s, &req)
 
 		// Feiran
-		r.handleFastUpdate(s, &resp)
+		r.handleFastUpdate(s, &req, &resp)
 
 		// Clear any failures, allow pipelining
 		s.failures = 0
@@ -504,7 +504,7 @@ func (r *Raft) pipelineDecode(s *followerReplication, p AppendPipeline, stopCh, 
 			updateLastAppended(s, req)
 
 			// Feiran
-			r.handleFastUpdate(s, resp)
+			r.handleFastUpdate(s, req, resp)
 		case <-stopCh:
 			return
 		}
@@ -517,6 +517,9 @@ func (r *Raft) setupAppendEntries(s *followerReplication, req *AppendEntriesRequ
 	req.Term = s.currentTerm
 	req.Leader = r.trans.EncodePeer(r.localID, r.localAddr)
 	req.LeaderCommitIndex = r.getCommitIndex()
+	if len(r.localReplicas) > 1 {
+		req.ApplyIndexes = r.merger.GetApplyIndexes()
+	}
 	if err := r.setPreviousLog(req, nextIndex); err != nil {
 		return err
 	}
@@ -607,7 +610,7 @@ func (r *Raft) stepDown(s *followerReplication) {
 }
 
 // Feiran
-func (r *Raft) handleFastUpdate(s *followerReplication, resp *AppendEntriesResponse) {
+func (r *Raft) handleFastUpdate(s *followerReplication, req *AppendEntriesRequest, resp *AppendEntriesResponse) {
 	nGroups := len(r.localReplicas)
 	if len(resp.LocalTerms) != nGroups || len(r.fastUpdateInfo) != nGroups {
 		return
@@ -620,15 +623,12 @@ func (r *Raft) handleFastUpdate(s *followerReplication, resp *AppendEntriesRespo
 			continue
 		}
 		groupInfo := r.fastUpdateInfo[i]
-		if len(groupInfo) != len(r.configurations.latest.Servers) {
-			return
-		}
 		localTerm := replica.getCurrentTerm()
 
 		// local info
 		groupInfo[r.localID].term = localTerm
-		groupInfo[r.localID].nextSafeTime = replica.nextSafeTime(replica.localID)
-		
+		groupInfo[r.localID].nextSafeTime = replica.nextSafeTime(req.ApplyIndexes[i])
+
 		// resp info
 		groupInfo[respPeerID].term = resp.LocalTerms[i]
 		groupInfo[respPeerID].nextSafeTime = resp.NextSafeTimes[i]
@@ -639,6 +639,9 @@ func (r *Raft) handleFastUpdate(s *followerReplication, resp *AppendEntriesRespo
 			if server.Address == replica.leader {
 				leaderID = server.ID
 			}
+		}
+		if leaderID == "" {
+			continue
 		}
 		if groupInfo[leaderID].term != localTerm {
 			continue
@@ -661,17 +664,17 @@ func (r *Raft) handleFastUpdate(s *followerReplication, resp *AppendEntriesRespo
 
 		if len(safeTimes) >= replica.quorumSize() {
 			sort.Sort(int64Slice(safeTimes))
-			newSafeTime := safeTimes[replica.quorumSize() - 1]
+			newSafeTime := safeTimes[replica.quorumSize()-1]
 			// quorum must include leader
 			if groupInfo[leaderID].nextSafeTime < newSafeTime {
 				newSafeTime = groupInfo[leaderID].nextSafeTime
 			}
 			// r.logger.Printf("[DEBUG] fast update: group %v new safe time %v\n", i, formatTimestamp(newSafeTime))
-			r.merger.UpdateSafeTime(i, newSafeTime, true)
-			r.fsmMutateCh <- &commitTuple{&Log{
-				Type: LogCommand,
-				Timestamp: newSafeTime,
-			}, nil}
+			r.merger.UpdateSafeTime(i, newSafeTime)
+			// r.fsmMutateCh <- &commitTuple{&Log{
+			// 	Type: LogCommand,
+			// 	Timestamp: newSafeTime,
+			// }, nil}
 		}
 	}
 }

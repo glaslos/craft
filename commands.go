@@ -33,6 +33,10 @@ type AppendEntriesRequest struct {
 
 	// Commit index on the leader
 	LeaderCommitIndex uint64
+
+	// Feiran
+	// apply indexes for local replicas
+	ApplyIndexes []uint64
 }
 
 // See WithRPCHeader.
@@ -59,7 +63,7 @@ type AppendEntriesResponse struct {
 	NoRetryBackoff bool
 
 	// Feiran
-	LocalTerms []uint64
+	LocalTerms    []uint64
 	NextSafeTimes []int64
 }
 
