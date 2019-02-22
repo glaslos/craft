@@ -183,7 +183,6 @@ type Raft struct {
 	targetPriority int
 	// fast update
 	fastUpdateInfo []map[ServerID]*fastUpdateInfo
-	timeLock sync.Mutex
 	// clock offset, for experiment
 	clockOffset int64
 }

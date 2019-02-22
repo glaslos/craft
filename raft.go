@@ -291,9 +291,7 @@ func (r *Raft) runCandidate() {
 				// wait out clock uncertainty
 				waitingTime := time.Duration(math.Pow10(r.conf.MaxClockUncertainty)) * time.Nanosecond
 				t := getTimestamp()
-				r.timeLock.Lock()
-				w := time.Duration(r.maxTimestamp - t)
-				r.timeLock.Unlock()
+				w := time.Duration(atomic.LoadInt64(&r.maxTimestamp) - t)
 				if w > waitingTime {
 					waitingTime = w
 				}
@@ -1155,9 +1153,7 @@ func (r *Raft) appendEntries(rpc RPC, a *AppendEntriesRequest) {
 			r.setLastLog(last.Index, last.Term)
 
 			// Feiran
-			r.timeLock.Lock()
-			r.maxTimestamp = newEntries[n-1].Timestamp
-			r.timeLock.Unlock()
+			atomic.StoreInt64(&r.maxTimestamp, newEntries[n-1].Timestamp)
 		}
 
 		metrics.MeasureSince([]string{"raft", "rpc", "appendEntries", "storeLogs"}, start)
@@ -1617,6 +1613,11 @@ func (r *Raft) isSyncRequest(a *AppendEntriesRequest) bool {
 }
 
 // Feiran
+func (r *Raft) isSyncEntry(log Log) bool {
+	return len(log.Data) == 0
+}
+
+// Feiran
 // nextSafeTime calculates the next safe time after the given index
 func (r *Raft) nextSafeTime(index uint64) int64 {
 	switch r.getState() {
@@ -1625,21 +1626,31 @@ func (r *Raft) nextSafeTime(index uint64) int64 {
 	case Follower:
 		return getTimestamp()
 	case Leader:
-		ts := int64(0)
-		if index < r.getLastIndex() {
+		maxTimestamp := atomic.LoadInt64(&r.maxTimestamp)
+		ts := getTimestamp()
+		lastIndex := r.getLastIndex()
+		if index < lastIndex {
 			var entry Log
-			if err := r.logs.GetLog(index+1, &entry); err != nil {
-				ts = 0
+			i := index + 1
+			for i < lastIndex {
+				if err := r.logs.GetLog(i, &entry); err != nil {
+					ts = 0
+					break
+				}
+				if entry.Type == LogCommand && !r.isSyncEntry(entry) {
+					break;
+				}
+				i++
 			}
-			// r.logger.Printf("[DEBUG] fast update: server %v, match index %v, next entry ts %v\n", server, matchIndex,
-			// 	formatTimestamp(entry.Timestamp - 10))
-			if getUncertaintyFromTimestamp(entry.Timestamp) < r.conf.MaxClockUncertainty {
+			// r.logger.Printf("[DEBUG] fast update: match index %v, next index %v\n", index, i)
+			if i < lastIndex && getUncertaintyFromTimestamp(entry.Timestamp) < r.conf.MaxClockUncertainty {
 				ts = entry.Timestamp - 10
 			}
-		} else { // TODO: check safety for this
-			r.timeLock.Lock()
-			ts = r.maxTimestamp - 10
-			r.timeLock.Unlock()
+		} else {
+			// check if there is new entry after ts
+			if atomic.LoadInt64(&r.maxTimestamp) != maxTimestamp {
+				ts = 0
+			}
 		}
 		return ts
 	default:
@@ -1697,9 +1708,7 @@ func getUncertaintyFromTimestamp(t int64) int {
 // assign timestamps to the log, used in leader loop
 func (r *Raft)assignTimestamp(log *logFuture) {
 	timestamp := getTimestamp()
-	r.timeLock.Lock()
-	r.maxTimestamp = timestamp
-	r.timeLock.Unlock()
+	atomic.StoreInt64(&r.maxTimestamp, timestamp)
 
 	// r.logger.Printf("[DEBUG] raft: now %v, timestamp %v\n",
 	// 	formatTimestamp(time.Now().UnixNano()), formatTimestamp(timestamp))

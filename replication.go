@@ -612,12 +612,16 @@ func (r *Raft) stepDown(s *followerReplication) {
 // Feiran
 func (r *Raft) handleFastUpdate(s *followerReplication, req *AppendEntriesRequest, resp *AppendEntriesResponse) {
 	nGroups := len(r.localReplicas)
+	// r.logger.Printf("[DEBUG] fast update: handle fast update from peer %v len terms %v\n",
+	// 		s.peer.ID, len(resp.LocalTerms))
 	if len(resp.LocalTerms) != nGroups || len(r.fastUpdateInfo) != nGroups {
 		return
 	}
 
 	respPeerID := s.peer.ID
 	for i, replica := range r.localReplicas {
+		// r.logger.Printf("[DEBUG] fast update: from peer %v group %v, term %v ts %v\n",
+		// 	respPeerID, i, resp.LocalTerms[i], formatTimestamp(resp.NextSafeTimes[i]))
 		// skip ourself
 		if replica == r {
 			continue
@@ -652,8 +656,6 @@ func (r *Raft) handleFastUpdate(s *followerReplication, req *AppendEntriesReques
 			continue
 		}
 
-		// r.logger.Printf("[DEBUG] fast update: from peer %v group %v, ts %v\n", respPeerID, i, formatTimestamp(resp.NextSafeTimes[i]))
-
 		// check and update safe time if possible
 		var safeTimes []int64
 		for _, v := range groupInfo {
@@ -671,10 +673,6 @@ func (r *Raft) handleFastUpdate(s *followerReplication, req *AppendEntriesReques
 			}
 			// r.logger.Printf("[DEBUG] fast update: group %v new safe time %v\n", i, formatTimestamp(newSafeTime))
 			r.merger.UpdateSafeTime(i, newSafeTime)
-			// r.fsmMutateCh <- &commitTuple{&Log{
-			// 	Type: LogCommand,
-			// 	Timestamp: newSafeTime,
-			// }, nil}
 		}
 	}
 }
