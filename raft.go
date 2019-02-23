@@ -257,7 +257,7 @@ func (r *Raft) runCandidate() {
 	// Tally the votes, need a simple majority
 	grantedVotes := 0
 	votesNeeded := r.quorumSize()
-	r.logger.Printf("[DEBUG] raft: Votes needed: %d", votesNeeded)
+	// r.logger.Printf("[DEBUG] raft: Votes needed: %d", votesNeeded)
 
 	for r.getState() == Candidate {
 		select {
@@ -1168,7 +1168,6 @@ func (r *Raft) appendEntries(rpc RPC, a *AppendEntriesRequest) {
 		localTerms := make([]uint64, len(r.localReplicas))
 		nextSafeTimes := make([]int64, len(r.localReplicas))
 
-		count := 0
 		// use local commit indexes, might be stale
 		// another option is to include commit indexes in the request,
 		// which increases the message size
@@ -1176,26 +1175,21 @@ func (r *Raft) appendEntries(rpc RPC, a *AppendEntriesRequest) {
 			localTerms[i] = replica.getCurrentTerm()
 			nextSafeTime := replica.nextSafeTime(a.ApplyIndexes[i])
 			nextSafeTimes[i] = nextSafeTime
-			if nextSafeTime > 0 {
-				count++
-			}
 		}
 
-		if count == len(r.localReplicas) {
-			resp.LocalTerms = localTerms
-			resp.NextSafeTimes = nextSafeTimes
-		}
-	}
+		resp.LocalTerms = localTerms
+		resp.NextSafeTimes = nextSafeTimes
 
-	// Feiran
-	if len(a.Entries) > 0 {
 		if !r.isSyncRequest(a) {
+			lastEntryTimestamp := a.Entries[len(a.Entries)-1].Timestamp
 			// every local leader replica on this server sends a sync request
-			for _, replica := range r.localReplicas {
-				// the local leader has a smaller timestamp,
+			for i, replica := range r.localReplicas {
+				// the local leader has a smaller safe time than incoming entry,
 				// need to add a sync entry to unblock incoming entry
 				if replica != r && replica.getState() == Leader &&
-				atomic.LoadInt64(&replica.maxTimestamp) < a.Entries[len(a.Entries)-1].Timestamp {
+					nextSafeTimes[i] < lastEntryTimestamp {
+					// 	r.logger.Printf("[DEBUG] ~~~~ fast update: group %v next safe time %v, last entry ts %v, adding a sync entry\n",
+					// i, formatTimestamp(nextSafeTimes[i]), formatTimestamp(lastEntryTimestamp))
 					replica.addSyncEntry()
 				}
 			}
@@ -1596,12 +1590,13 @@ func (r *Raft) decayTargetPriority() {
 		targetPriority = 1
 	}
 	r.targetPriority = targetPriority
-	r.logger.Printf("[DEBUG] raft: decay target priority to %v\n", r.targetPriority)
+	// r.logger.Printf("[DEBUG] raft: decay target priority to %v\n", r.targetPriority)
 }
 
 // Feiran
 // addSyncEntry adds a no-op entry for updating safe time
 func (r *Raft) addSyncEntry() {
+	// return
 	r.Apply(make([]byte, 0), time.Second)
 }
 
@@ -1636,7 +1631,7 @@ func (r *Raft) nextSafeTime(index uint64) int64 {
 		var entry Log
 
 		// find first entry after given index
-		nextIndex := index + 1
+		nextIndex := index
 		for ; nextIndex <= lastIndex; nextIndex++ {
 			if err := r.logs.GetLog(nextIndex, &entry); err != nil {
 				return 0

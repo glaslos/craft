@@ -519,6 +519,7 @@ func (r *Raft) setupAppendEntries(s *followerReplication, req *AppendEntriesRequ
 	req.LeaderCommitIndex = r.getCommitIndex()
 	if len(r.localReplicas) > 1 {
 		req.ApplyIndexes = r.merger.GetApplyIndexes()
+		// r.logger.Printf("[DEBUG] fast update: apply indexes %v\n", req.ApplyIndexes)
 	}
 	if err := r.setPreviousLog(req, nextIndex); err != nil {
 		return err
@@ -620,7 +621,7 @@ func (r *Raft) handleFastUpdate(s *followerReplication, req *AppendEntriesReques
 
 	respPeerID := s.peer.ID
 	for i, replica := range r.localReplicas {
-		// r.logger.Printf("[DEBUG] fast update: from peer %v group %v, ts %v\n",
+		// r.logger.Printf("[DEBUG] #### fast update: from peer %v group %v, ts %v\n",
 		// 	respPeerID, i, formatTimestamp(resp.NextSafeTimes[i]))
 		// skip ourself
 		if replica == r {
@@ -671,7 +672,7 @@ func (r *Raft) handleFastUpdate(s *followerReplication, req *AppendEntriesReques
 			if groupInfo[leaderID].nextSafeTime < newSafeTime {
 				newSafeTime = groupInfo[leaderID].nextSafeTime
 			}
-			// r.logger.Printf("[DEBUG] fast update: group %v new safe time %v\n", i, formatTimestamp(newSafeTime))
+			// r.logger.Printf("[DEBUG] ==== fast update: group %v new safe time %v\n", i, formatTimestamp(newSafeTime))
 			r.merger.UpdateSafeTime(i, newSafeTime)
 		}
 	}
