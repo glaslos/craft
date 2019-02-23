@@ -614,7 +614,9 @@ func (r *Raft) leaderLoop() {
 		case newLog := <-r.applyCh:
 			// Group commit, gather all the ready commits
 			// Feiran
-			atomic.StoreInt64(&r.inflightTimestamp, getTimestamp())
+			if !r.isSyncEntry(newLog.log) {
+				atomic.StoreInt64(&r.inflightTimestamp, getTimestamp())
+			}
 			r.assignTimestamp(newLog)
 			ready := []*logFuture{newLog}
 			for i := 0; i < r.conf.MaxAppendEntries; i++ {
@@ -1647,20 +1649,20 @@ func (r *Raft) nextSafeTime(index uint64) int64 {
 		// there exists an entry in the log after given index
 		if nextIndex <= lastIndex {
 			ts = entry.Timestamp - 10
-			r.logger.Printf("[DEBUG] **** fast update: next safe time index %v, last index %v, ts %v, entry ts\n",
-				index, lastIndex, formatTimestamp(ts))
+			// r.logger.Printf("[DEBUG] **** fast update: next safe time index %v, last index %v, ts %v, entry ts\n",
+			// 	index, lastIndex, formatTimestamp(ts))
 		} else {
 			// must take a timestamp before the check, in case new timestamps are assigned after the check
 			now := getTimestamp()
 			// check if there is inflight entry that has been assigned timestamp but not made into the log
 			if atomic.LoadInt64(&r.maxTimestamp) > entry.Timestamp {
 				ts = inflightTimestamp
-				r.logger.Printf("[DEBUG] **** fast update: next safe time index %v, last index %v, ts %v, using inflight ts\n",
-					index, lastIndex, formatTimestamp(ts))
+				// r.logger.Printf("[DEBUG] **** fast update: next safe time index %v, last index %v, ts %v, using inflight ts\n",
+				// 	index, lastIndex, formatTimestamp(ts))
 			} else {
 				ts = now
-				r.logger.Printf("[DEBUG] **** fast update: next safe time index %v, ts %v, using now\n",
-					index, formatTimestamp(ts))
+				// r.logger.Printf("[DEBUG] **** fast update: next safe time index %v, ts %v, using now\n",
+				// 	index, formatTimestamp(ts))
 			}
 		}
 
@@ -1724,7 +1726,9 @@ func getUncertaintyFromTimestamp(t int64) int {
 // assign timestamps to the log, used in leader loop
 func (r *Raft)assignTimestamp(log *logFuture) {
 	timestamp := getTimestamp()
-	atomic.StoreInt64(&r.maxTimestamp, timestamp)
+	if !r.isSyncEntry(log.log) {
+		atomic.StoreInt64(&r.maxTimestamp, timestamp)
+	}
 
 	// r.logger.Printf("[DEBUG] raft: now %v, assigned a new timestamp %v\n",
 	// 	formatTimestamp(time.Now().UnixNano()), formatTimestamp(timestamp))
