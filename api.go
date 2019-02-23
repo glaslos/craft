@@ -175,6 +175,8 @@ type Raft struct {
 	localReplicas []*Raft
 	// max timestamp assigned (for leader), or seen (for follower) so far
 	maxTimestamp int64
+	// timestamp just before the inflight batch of logs
+	inflightTimestamp int64
 	// resigning leader
 	isResigning bool
 	// election priority

@@ -614,6 +614,7 @@ func (r *Raft) leaderLoop() {
 		case newLog := <-r.applyCh:
 			// Group commit, gather all the ready commits
 			// Feiran
+			atomic.StoreInt64(&r.inflightTimestamp, getTimestamp())
 			r.assignTimestamp(newLog)
 			ready := []*logFuture{newLog}
 			for i := 0; i < r.conf.MaxAppendEntries; i++ {
@@ -1091,20 +1092,6 @@ func (r *Raft) appendEntries(rpc RPC, a *AppendEntriesRequest) {
 	if len(a.Entries) > 0 {
 		start := time.Now()
 
-		// Feiran
-		if !r.isSyncRequest(a) {
-			// every local leader replica on this server sends a sync request
-			for _, replica := range r.localReplicas {
-				// the local leader has a smaller timestamp,
-				// need to add a sync entry to unblock my group
-				maxTimestamp := atomic.LoadInt64(&replica.maxTimestamp)
-				if replica != r && replica.getState() == Leader &&
-					maxTimestamp < a.Entries[len(a.Entries)-1].Timestamp {
-					replica.addSyncEntry()
-				}
-			}
-		}
-
 		// Delete any conflicting entries, skip any duplicates
 		lastLogIdx, _ := r.getLastLog()
 		var newEntries []*Log
@@ -1175,7 +1162,7 @@ func (r *Raft) appendEntries(rpc RPC, a *AppendEntriesRequest) {
 	// Feiran
 	// fast update info
 	// if len(r.localReplicas) > 1 && len(a.Entries) > 0 && !r.isSyncRequest(a) && r.isLogCommands(a) && len(a.ApplyIndexes) == len(r.localReplicas) {
-	if len(a.ApplyIndexes) == len(r.localReplicas) {
+	if len(a.Entries) > 0 && len(a.ApplyIndexes) == len(r.localReplicas) {
 		localTerms := make([]uint64, len(r.localReplicas))
 		nextSafeTimes := make([]int64, len(r.localReplicas))
 
@@ -1195,6 +1182,21 @@ func (r *Raft) appendEntries(rpc RPC, a *AppendEntriesRequest) {
 		if count == len(r.localReplicas) {
 			resp.LocalTerms = localTerms
 			resp.NextSafeTimes = nextSafeTimes
+		}
+	}
+
+	// Feiran
+	if len(a.Entries) > 0 {
+		if !r.isSyncRequest(a) {
+			// every local leader replica on this server sends a sync request
+			for _, replica := range r.localReplicas {
+				// the local leader has a smaller timestamp,
+				// need to add a sync entry to unblock incoming entry
+				if replica != r && replica.getState() == Leader &&
+				atomic.LoadInt64(&replica.maxTimestamp) < a.Entries[len(a.Entries)-1].Timestamp {
+					replica.addSyncEntry()
+				}
+			}
 		}
 	}
 
@@ -1626,33 +1628,40 @@ func (r *Raft) nextSafeTime(index uint64) int64 {
 	case Follower:
 		return getTimestamp()
 	case Leader:
-		maxTimestamp := atomic.LoadInt64(&r.maxTimestamp)
-		ts := getTimestamp()
+		var ts int64
+		inflightTimestamp := atomic.LoadInt64(&r.inflightTimestamp)
 		lastIndex := r.getLastIndex()
 		var entry Log
 
 		// find first entry after given index
 		nextIndex := index + 1
-		for ; nextIndex < lastIndex; nextIndex++ {
+		for ; nextIndex <= lastIndex; nextIndex++ {
 			if err := r.logs.GetLog(nextIndex, &entry); err != nil {
-				ts = 0
-				break
+				return 0
 			}
 			if entry.Type == LogCommand && !r.isSyncEntry(entry) {
-				break;
+				break
 			}
 		}
 
-		// there exists an entry after given index
-		if nextIndex < lastIndex {
+		// there exists an entry in the log after given index
+		if nextIndex <= lastIndex {
 			ts = entry.Timestamp - 10
-			// r.logger.Printf("[DEBUG] fast update: next safe time index %v, ts %v, entry ts\n", index, formatTimestamp(ts))
+			r.logger.Printf("[DEBUG] **** fast update: next safe time index %v, last index %v, ts %v, entry ts\n",
+				index, lastIndex, formatTimestamp(ts))
 		} else {
-			// check if there is new entry after ts
-			if atomic.LoadInt64(&r.maxTimestamp) != maxTimestamp {
-				ts = 0
+			// must take a timestamp before the check, in case new timestamps are assigned after the check
+			now := getTimestamp()
+			// check if there is inflight entry that has been assigned timestamp but not made into the log
+			if atomic.LoadInt64(&r.maxTimestamp) > entry.Timestamp {
+				ts = inflightTimestamp
+				r.logger.Printf("[DEBUG] **** fast update: next safe time index %v, last index %v, ts %v, using inflight ts\n",
+					index, lastIndex, formatTimestamp(ts))
+			} else {
+				ts = now
+				r.logger.Printf("[DEBUG] **** fast update: next safe time index %v, ts %v, using now\n",
+					index, formatTimestamp(ts))
 			}
-			// r.logger.Printf("[DEBUG] fast update: next safe time index %v, ts %v, using now\n", index, formatTimestamp(ts))
 		}
 
 		if getUncertaintyFromTimestamp(ts) > r.conf.MaxClockUncertainty {
