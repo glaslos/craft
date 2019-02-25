@@ -1631,7 +1631,7 @@ func (r *Raft) nextSafeTime(index uint64) int64 {
 		var entry Log
 
 		// find first entry after given index
-		nextIndex := index
+		nextIndex := index + 1
 		for ; nextIndex <= lastIndex; nextIndex++ {
 			if err := r.logs.GetLog(nextIndex, &entry); err != nil {
 				return 0
@@ -1644,20 +1644,24 @@ func (r *Raft) nextSafeTime(index uint64) int64 {
 		// there exists an entry in the log after given index
 		if nextIndex <= lastIndex {
 			ts = entry.Timestamp - 10
-			// r.logger.Printf("[DEBUG] **** fast update: next safe time index %v, last index %v, ts %v, entry ts\n",
-			// 	index, lastIndex, formatTimestamp(ts))
+			// r.logger.Printf("[DEBUG] **** fast update: next safe time index %v, next index %v, last index %v, ts %v, entry ts\n",
+			// 	index, nextIndex, lastIndex, formatTimestamp(ts))
 		} else {
 			// must take a timestamp before the check, in case new timestamps are assigned after the check
 			now := getTimestamp()
 			// check if there is inflight entry that has been assigned timestamp but not made into the log
-			if atomic.LoadInt64(&r.maxTimestamp) > entry.Timestamp {
+			if err := r.logs.GetLog(lastIndex, &entry); err != nil {
+				return 0
+			}
+			maxTimestamp := atomic.LoadInt64(&r.maxTimestamp)
+			if maxTimestamp > entry.Timestamp {
 				ts = inflightTimestamp
-				// r.logger.Printf("[DEBUG] **** fast update: next safe time index %v, last index %v, ts %v, using inflight ts\n",
-				// 	index, lastIndex, formatTimestamp(ts))
+				// r.logger.Printf("[DEBUG] **** fast update: next safe time index %v, last index %v, ts %v, max ts %v, using inflight ts\n",
+				// 	index, lastIndex, formatTimestamp(entry.Timestamp), formatTimestamp(maxTimestamp), formatTimestamp(ts))
 			} else {
 				ts = now
-				// r.logger.Printf("[DEBUG] **** fast update: next safe time index %v, ts %v, using now\n",
-				// 	index, formatTimestamp(ts))
+				// r.logger.Printf("[DEBUG] **** fast update: next safe time index %v, last index %v, ts %v, max ts %v, using now %v\n",
+				// 	index, lastIndex, formatTimestamp(entry.Timestamp), formatTimestamp(maxTimestamp), formatTimestamp(ts))
 			}
 		}
 
