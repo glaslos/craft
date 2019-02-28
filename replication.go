@@ -486,6 +486,12 @@ func (r *Raft) pipelineDecode(s *followerReplication, p AppendPipeline, stopCh, 
 			req, resp := ready.Request(), ready.Response()
 			appendStats(string(s.peer.ID), ready.Start(), float32(len(req.Entries)))
 
+			// Feiran
+			// if len(req.Entries) > 0 {
+			// 	r.logger.Printf("[DEBUG] raft: group %v index %v receiving response after %v\n",
+			// 	r.groupID, req.Entries[0].Index, time.Since(time.Unix(0, req.Entries[0].Timestamp)))
+			// }
+
 			// Check for a newer term, stop running
 			if resp.Term > req.Term {
 				r.handleStaleTerm(s)
@@ -613,8 +619,7 @@ func (r *Raft) stepDown(s *followerReplication) {
 // Feiran
 func (r *Raft) handleFastUpdate(s *followerReplication, req *AppendEntriesRequest, resp *AppendEntriesResponse) {
 	nGroups := len(r.localReplicas)
-	// r.logger.Printf("[DEBUG] fast update: handle fast update from peer %v len terms %v\n",
-	// 		s.peer.ID, len(resp.LocalTerms))
+	// r.logger.Printf("[DEBUG] fast update: handle fast update from peer %v\n", s.peer.ID)
 	if len(resp.LocalTerms) != nGroups || len(r.fastUpdateInfo) != nGroups {
 		return
 	}

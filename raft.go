@@ -1033,6 +1033,11 @@ func (r *Raft) processHeartbeat(rpc RPC) {
 // only be called from the main thread.
 func (r *Raft) appendEntries(rpc RPC, a *AppendEntriesRequest) {
 	defer metrics.MeasureSince([]string{"raft", "rpc", "appendEntries"}, time.Now())
+	// Feiran
+	// if len(a.Entries) > 0 {
+	// 	r.logger.Printf("[DEBUG] raft: group %v receiving appendEntries from index %v to index %v, latency %v\n",
+	// 	r.groupID, a.Entries[0].Index, a.Entries[len(a.Entries) - 1].Index, time.Since(time.Unix(0, a.Entries[0].Timestamp)))
+	// }
 	// Setup a response
 	resp := &AppendEntriesResponse{
 		RPCHeader:      r.getRPCHeader(),
@@ -1180,20 +1185,21 @@ func (r *Raft) appendEntries(rpc RPC, a *AppendEntriesRequest) {
 		resp.LocalTerms = localTerms
 		resp.NextSafeTimes = nextSafeTimes
 
-		if !r.isSyncRequest(a) {
-			lastEntryTimestamp := a.Entries[len(a.Entries)-1].Timestamp
-			// every local leader replica on this server sends a sync request
-			for i, replica := range r.localReplicas {
-				// the local leader has a smaller safe time than incoming entry,
-				// need to add a sync entry to unblock incoming entry
-				if replica != r && replica.getState() == Leader &&
-					nextSafeTimes[i] < lastEntryTimestamp {
-					// 	r.logger.Printf("[DEBUG] ~~~~ fast update: group %v next safe time %v, last entry ts %v, adding a sync entry\n",
-					// i, formatTimestamp(nextSafeTimes[i]), formatTimestamp(lastEntryTimestamp))
-					replica.addSyncEntry()
-				}
-			}
-		}
+		// if !r.isSyncRequest(a) {
+		// 	lastEntryTimestamp := a.Entries[len(a.Entries)-1].Timestamp
+		// 	// every local leader replica on this server sends a sync request
+		// 	for i, replica := range r.localReplicas {
+		// 		// the local leader has a smaller safe time than incoming entry,
+		// 		// need to add a sync entry to unblock incoming entry
+		// 		if replica != r && replica.getState() == Leader &&
+		// 			nextSafeTimes[i] < lastEntryTimestamp &&
+		// 			atomic.LoadInt64(&replica.maxTimestamp) < lastEntryTimestamp {
+		// 			// 	r.logger.Printf("[DEBUG] ~~~~ fast update: group %v next safe time %v, last entry ts %v, adding a sync entry\n",
+		// 			// i, formatTimestamp(nextSafeTimes[i]), formatTimestamp(lastEntryTimestamp))
+		// 			replica.addSyncEntry()
+		// 		}
+		// 	}
+		// }
 	}
 
 	// Everything went well, set success
