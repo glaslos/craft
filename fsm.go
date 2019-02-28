@@ -80,7 +80,7 @@ func (r *Raft) runFSM() {
 			req.future.respond(nil)
 			// Feiran
 			// single group, execution is completed
-			if len(r.localReplicas) <= 1 {
+			if r.nGroups <= 1 {
 				req.future.complete()
 			}
 		}

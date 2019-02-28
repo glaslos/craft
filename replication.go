@@ -530,11 +530,11 @@ func (r *Raft) setupAppendEntries(s *followerReplication, req *AppendEntriesRequ
 		return err
 	}
 	// Feiran
-	if len(r.localReplicas) > 1 {
+	if r.nGroups > 1 {
 		req.ApplyIndexes = r.merger.GetApplyIndexes()
 		// next safe time after replicating entries in this request
 		if len(req.Entries) > 0 {
-			req.NextSafeTime = r.nextSafeTime(req.Entries[len(req.Entries) - 1].Index)
+			req.NextSafeTime = r.nextSafeTime(req.Entries[len(req.Entries)-1].Index)
 		}
 		// r.logger.Printf("[DEBUG] fast update: apply indexes %v\n", req.ApplyIndexes)
 	}
@@ -623,9 +623,8 @@ func (r *Raft) stepDown(s *followerReplication) {
 
 // Feiran
 func (r *Raft) handleFastUpdate(s *followerReplication, req *AppendEntriesRequest, resp *AppendEntriesResponse) {
-	nGroups := len(r.localReplicas)
 	// r.logger.Printf("[DEBUG] fast update: handle fast update from peer %v\n", s.peer.ID)
-	if len(resp.LocalTerms) != nGroups || len(r.fastUpdateInfo) != nGroups {
+	if len(resp.LocalTerms) != r.nGroups || len(r.fastUpdateInfo) != r.nGroups {
 		return
 	}
 
@@ -649,16 +648,7 @@ func (r *Raft) handleFastUpdate(s *followerReplication, req *AppendEntriesReques
 		groupInfo[respPeerID].nextSafeTime = resp.NextSafeTimes[i]
 
 		// leader must agree on the term
-		var leaderID ServerID
-		for _, server := range replica.configurations.latest.Servers {
-			if server.Address == replica.leader {
-				leaderID = server.ID
-			}
-		}
-		if leaderID == "" {
-			continue
-		}
-		if groupInfo[leaderID].term != localTerm {
+		if replica.leaderID == "" || groupInfo[replica.leaderID].term != localTerm {
 			continue
 		}
 
@@ -679,8 +669,8 @@ func (r *Raft) handleFastUpdate(s *followerReplication, req *AppendEntriesReques
 			sort.Sort(int64Slice(safeTimes))
 			newSafeTime := safeTimes[replica.quorumSize()-1]
 			// quorum must include leader
-			if groupInfo[leaderID].nextSafeTime < newSafeTime {
-				newSafeTime = groupInfo[leaderID].nextSafeTime
+			if groupInfo[replica.leaderID].nextSafeTime < newSafeTime {
+				newSafeTime = groupInfo[replica.leaderID].nextSafeTime
 			}
 			// r.logger.Printf("[DEBUG] ==== fast update: group %v new safe time %v\n", i, formatTimestamp(newSafeTime))
 			r.merger.UpdateSafeTime(i, newSafeTime)

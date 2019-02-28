@@ -97,6 +97,13 @@ func (r *Raft) setLeader(leader ServerAddress) {
 	if oldLeader != leader {
 		r.observe(LeaderObservation{leader: leader})
 	}
+	// Feiran
+	for _, server := range r.configurations.latest.Servers {
+		if server.Address == r.leader {
+			r.leaderID = server.ID
+			break
+		}
+	}
 }
 
 // requestConfigChange is a helper for the above functions that make
@@ -1168,13 +1175,10 @@ func (r *Raft) appendEntries(rpc RPC, a *AppendEntriesRequest) {
 
 	// Feiran
 	// fast update info
-	if len(a.Entries) > 0 && len(a.ApplyIndexes) == len(r.localReplicas) {
-		localTerms := make([]uint64, len(r.localReplicas))
-		nextSafeTimes := make([]int64, len(r.localReplicas))
+	if len(a.Entries) > 0 && len(a.ApplyIndexes) == r.nGroups {
+		localTerms := make([]uint64, r.nGroups)
+		nextSafeTimes := make([]int64, r.nGroups)
 
-		// use local commit indexes, might be stale
-		// another option is to include commit indexes in the request,
-		// which increases the message size
 		for i, replica := range r.localReplicas {
 			localTerms[i] = replica.getCurrentTerm()
 			nextSafeTime := replica.nextSafeTime(a.ApplyIndexes[i])
@@ -1662,12 +1666,12 @@ func (r *Raft) nextSafeTime(index uint64) int64 {
 			// check if there is inflight entry that has been assigned timestamp but not made into the log
 			if atomic.LoadInt64(&r.inflightTimestamp) > entry.Timestamp {
 				ts = inflightTimestamp
-				// r.logger.Printf("[DEBUG] **** fast update: next safe time index %v, last index %v, ts %v, max ts %v, inflight ts %v, using inflight\n",
-				// 	index, lastIndex, formatTimestamp(entry.Timestamp), formatTimestamp(maxTimestamp), formatTimestamp(ts))
+				// r.logger.Printf("[DEBUG] **** fast update: next safe time index %v, last index %v, ts %v, inflight ts %v, using inflight\n",
+				// 	index, lastIndex, formatTimestamp(entry.Timestamp), formatTimestamp(ts))
 			} else {
 				ts = now
-				// r.logger.Printf("[DEBUG] **** fast update: next safe time index %v, last index %v, ts %v, max ts %v, inflight ts %v, using now %v\n",
-				// 	index, lastIndex, formatTimestamp(entry.Timestamp), formatTimestamp(maxTimestamp), formatTimestamp(inflightTimestamp), formatTimestamp(ts))
+				// r.logger.Printf("[DEBUG] **** fast update: next safe time index %v, last index %v, ts %v, inflight ts %v, using now %v\n",
+				// 	index, lastIndex, formatTimestamp(entry.Timestamp), formatTimestamp(inflightTimestamp), formatTimestamp(ts))
 			}
 		}
 
@@ -1689,7 +1693,7 @@ type fastUpdateInfo struct {
 
 // Feiran
 func (r *Raft) initFastUpdate(configuration Configuration) {
-	r.fastUpdateInfo = make([]map[ServerID]*fastUpdateInfo, len(r.localReplicas))
+	r.fastUpdateInfo = make([]map[ServerID]*fastUpdateInfo, r.nGroups)
 	for i := 0; i < len(r.fastUpdateInfo); i++ {
 		r.fastUpdateInfo[i] = make(map[ServerID]*fastUpdateInfo)
 		for _, server := range configuration.Servers {

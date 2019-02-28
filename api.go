@@ -9,9 +9,10 @@ import (
 	"strconv"
 	"sync"
 	"time"
+
 	// "sync/atomic"
 
-	"github.com/armon/go-metrics"
+	metrics "github.com/armon/go-metrics"
 	"gitlab.com/feiranwang/echo/merger"
 )
 
@@ -56,9 +57,9 @@ var (
 	// it is stepping down, or is waiting out clock error
 	ErrRejected = errors.New("leader rejects the request")
 
-	// clockOffsetEnv is name of environment variable of clock offset, for experiment 
+	// clockOffsetEnv is name of environment variable of clock offset, for experiment
 	clockOffsetEnv = "CLOCK_OFFSET"
-	clockOffset = int64(0)
+	clockOffset    = int64(0)
 )
 
 // Raft implements a Raft node.
@@ -169,8 +170,10 @@ type Raft struct {
 	observers     map[uint64]*Observer
 
 	// Feiran
-	groupID int
-	merger *merger.Merger
+	groupID  int
+	nGroups  int
+	leaderID ServerID
+	merger   *merger.Merger
 	// replicas on the same server
 	localReplicas []*Raft
 	// max timestamp assigned (for leader), or seen (for follower) so far
@@ -180,8 +183,8 @@ type Raft struct {
 	// resigning leader
 	isResigning bool
 	// election priority
-	priority int
-	maxPriority int
+	priority       int
+	maxPriority    int
 	targetPriority int
 	// fast update
 	fastUpdateInfo []map[ServerID]*fastUpdateInfo
@@ -475,17 +478,17 @@ func NewRaft(conf *Config, fsm FSM, logs LogStore, stable StableStore, snaps Sna
 
 	// Create Raft struct.
 	r := &Raft{
-		protocolVersion: protocolVersion,
-		applyCh:         make(chan *logFuture),
-		conf:            *conf,
-		fsm:             fsm,
-		fsmMutateCh:     make(chan interface{}, 128),
-		fsmSnapshotCh:   make(chan *reqSnapshotFuture),
-		leaderCh:        make(chan bool),
-		localID:         localID,
-		localAddr:       localAddr,
-		logger:          logger,
-		logs:            logs,
+		protocolVersion:       protocolVersion,
+		applyCh:               make(chan *logFuture),
+		conf:                  *conf,
+		fsm:                   fsm,
+		fsmMutateCh:           make(chan interface{}, 128),
+		fsmSnapshotCh:         make(chan *reqSnapshotFuture),
+		leaderCh:              make(chan bool),
+		localID:               localID,
+		localAddr:             localAddr,
+		logger:                logger,
+		logs:                  logs,
 		configurationChangeCh: make(chan *configurationChangeFuture),
 		configurations:        configurations{},
 		rpcCh:                 trans.Consumer(),
@@ -501,10 +504,10 @@ func NewRaft(conf *Config, fsm FSM, logs LogStore, stable StableStore, snaps Sna
 		observers:             make(map[uint64]*Observer),
 
 		// Feiran
-		priority: 1,
-		maxPriority: 1,
+		priority:       1,
+		maxPriority:    1,
 		targetPriority: 1,
-		maxTimestamp: 0,
+		maxTimestamp:   0,
 	}
 
 	// Initialize as a follower.
@@ -1067,6 +1070,7 @@ func (r *Raft) AppliedIndex() uint64 {
 // SetupGroups sets the Raft group replicas
 func (r *Raft) SetupGroups(groupID int, localReplicas []*Raft, merger *merger.Merger) {
 	r.groupID = groupID
+	r.nGroups = len(localReplicas)
 	r.merger = merger
 	r.localReplicas = localReplicas
 }
