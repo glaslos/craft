@@ -10,7 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/armon/go-metrics"
+	metrics "github.com/armon/go-metrics"
 	"gitlab.com/feiranwang/echo/clock"
 )
 
@@ -1199,6 +1199,8 @@ func (r *Raft) appendEntries(rpc RPC, a *AppendEntriesRequest) {
 		// 		}
 		// 	}
 		// }
+
+		r.merger.AddFutureSafeTime(r.groupID, a.Entries[len(a.Entries)-1].Index, a.NextSafeTime)
 	}
 
 	// Everything went well, set success

@@ -37,6 +37,10 @@ type AppendEntriesRequest struct {
 	// Feiran
 	// apply indexes for local replicas
 	ApplyIndexes []uint64
+
+	// Feiran
+	// next safe time for this group after replicating entries in this request
+	NextSafeTime int64
 }
 
 // See WithRPCHeader.

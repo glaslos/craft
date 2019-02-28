@@ -523,15 +523,20 @@ func (r *Raft) setupAppendEntries(s *followerReplication, req *AppendEntriesRequ
 	req.Term = s.currentTerm
 	req.Leader = r.trans.EncodePeer(r.localID, r.localAddr)
 	req.LeaderCommitIndex = r.getCommitIndex()
-	if len(r.localReplicas) > 1 {
-		req.ApplyIndexes = r.merger.GetApplyIndexes()
-		// r.logger.Printf("[DEBUG] fast update: apply indexes %v\n", req.ApplyIndexes)
-	}
 	if err := r.setPreviousLog(req, nextIndex); err != nil {
 		return err
 	}
 	if err := r.setNewLogs(req, nextIndex, lastIndex); err != nil {
 		return err
+	}
+	// Feiran
+	if len(r.localReplicas) > 1 {
+		req.ApplyIndexes = r.merger.GetApplyIndexes()
+		// next safe time after replicating entries in this request
+		if len(req.Entries) > 0 {
+			req.NextSafeTime = r.nextSafeTime(req.Entries[len(req.Entries) - 1].Index)
+		}
+		// r.logger.Printf("[DEBUG] fast update: apply indexes %v\n", req.ApplyIndexes)
 	}
 	return nil
 }
