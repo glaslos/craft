@@ -1168,7 +1168,6 @@ func (r *Raft) appendEntries(rpc RPC, a *AppendEntriesRequest) {
 
 	// Feiran
 	// fast update info
-	// if len(r.localReplicas) > 1 && len(a.Entries) > 0 && !r.isSyncRequest(a) && r.isLogCommands(a) && len(a.ApplyIndexes) == len(r.localReplicas) {
 	if len(a.Entries) > 0 && len(a.ApplyIndexes) == len(r.localReplicas) {
 		localTerms := make([]uint64, len(r.localReplicas))
 		nextSafeTimes := make([]int64, len(r.localReplicas))
@@ -1655,19 +1654,18 @@ func (r *Raft) nextSafeTime(index uint64) int64 {
 		} else {
 			// must take a timestamp before the check, in case new timestamps are assigned after the check
 			now := getTimestamp()
-			// check if there is inflight entry that has been assigned timestamp but not made into the log
 			if err := r.logs.GetLog(lastIndex, &entry); err != nil {
 				return 0
 			}
-			maxTimestamp := atomic.LoadInt64(&r.maxTimestamp)
-			if maxTimestamp > entry.Timestamp {
+			// check if there is inflight entry that has been assigned timestamp but not made into the log
+			if atomic.LoadInt64(&r.inflightTimestamp) > entry.Timestamp {
 				ts = inflightTimestamp
-				// r.logger.Printf("[DEBUG] **** fast update: next safe time index %v, last index %v, ts %v, max ts %v, using inflight ts\n",
+				// r.logger.Printf("[DEBUG] **** fast update: next safe time index %v, last index %v, ts %v, max ts %v, inflight ts %v, using inflight\n",
 				// 	index, lastIndex, formatTimestamp(entry.Timestamp), formatTimestamp(maxTimestamp), formatTimestamp(ts))
 			} else {
 				ts = now
-				// r.logger.Printf("[DEBUG] **** fast update: next safe time index %v, last index %v, ts %v, max ts %v, using now %v\n",
-				// 	index, lastIndex, formatTimestamp(entry.Timestamp), formatTimestamp(maxTimestamp), formatTimestamp(ts))
+				// r.logger.Printf("[DEBUG] **** fast update: next safe time index %v, last index %v, ts %v, max ts %v, inflight ts %v, using now %v\n",
+				// 	index, lastIndex, formatTimestamp(entry.Timestamp), formatTimestamp(maxTimestamp), formatTimestamp(inflightTimestamp), formatTimestamp(ts))
 			}
 		}
 
@@ -1729,13 +1727,12 @@ func getUncertaintyFromTimestamp(t int64) int {
 
 // Feiran
 // assign timestamps to the log, used in leader loop
-func (r *Raft)assignTimestamp(log *logFuture) {
+func (r *Raft) assignTimestamp(log *logFuture) {
 	timestamp := getTimestamp()
 	if !r.isSyncEntry(log.log) {
 		atomic.StoreInt64(&r.maxTimestamp, timestamp)
 	}
 
-	// r.logger.Printf("[DEBUG] raft: now %v, assigned a new timestamp %v\n",
-	// 	formatTimestamp(time.Now().UnixNano()), formatTimestamp(timestamp))
+	// r.logger.Printf("[DEBUG] raft: assigning a new timestamp %v\n", formatTimestamp(timestamp))
 	log.log.Timestamp = timestamp
 }
