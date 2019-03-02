@@ -1591,12 +1591,7 @@ func (r *Raft) resetTargetPriority() {
 
 // Feiran
 func (r *Raft) decayTargetPriority() {
-	gap := r.targetPriority / 5
-	if gap < 1 {
-		gap = 1
-	}
-
-	targetPriority := r.targetPriority - gap
+	targetPriority := r.targetPriority / 2
 	if targetPriority < 1 {
 		targetPriority = 1
 	}
