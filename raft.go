@@ -926,7 +926,9 @@ func (r *Raft) dispatchLogs(applyLogs []*logFuture) {
 	}
 	r.leaderState.commitment.match(r.localID, lastIndex)
 	// feiran
-	r.leaderState.timeCommitment.match(r.localID, getTimestamp())
+	if len(applyLogs) > 0 {
+		r.leaderState.timeCommitment.match(r.localID, applyLogs[len(applyLogs)-1].log.Timestamp)
+	}
 
 	// Update the last log since it's on disk now
 	r.setLastLog(lastIndex, term)
@@ -1764,14 +1766,14 @@ func (r *Raft) leaderTimeCommitLoop() {
 		select {
 		case <-r.leaderState.timeCommitCh:
 			commitTime := r.leaderState.timeCommitment.getCommitTime()
-			r.logger.Printf("[DEBUG] raft: commit time %v\n", formatTimestamp(commitTime))
+			// r.logger.Printf("[DEBUG] raft: commit time %v\n", formatTimestamp(commitTime))
 			for {
 				e := r.leaderState.inflightCommit.Front()
 				if e == nil {
 					break
 				}
 				commitLog := e.Value.(*commitTuple)
-				r.logger.Printf("[DEBUG] raft: entry timestamp %v\n", formatTimestamp(commitLog.log.Timestamp))
+				// r.logger.Printf("[DEBUG] raft: entry timestamp %v\n", formatTimestamp(commitLog.log.Timestamp))
 				if commitLog.log.Timestamp > commitTime {
 					break
 				}
