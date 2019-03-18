@@ -86,6 +86,10 @@ type leaderState struct {
 	replState  map[ServerID]*followerReplication
 	notify     map[*verifyFuture]struct{}
 	stepDown   chan struct{}
+	// feiran
+	timeCommitCh   chan struct{}
+	timeCommitment *timeCommitment
+	inflightCommit *list.List
 }
 
 // setLeader is used to modify the current leader of the cluster
@@ -369,6 +373,12 @@ func (r *Raft) runLeader() {
 	r.leaderState.replState = make(map[ServerID]*followerReplication)
 	r.leaderState.notify = make(map[*verifyFuture]struct{})
 	r.leaderState.stepDown = make(chan struct{}, 1)
+	// feiran
+	r.leaderState.timeCommitCh = make(chan struct{}, 1)
+	r.leaderState.timeCommitment = newTimeCommitment(r.leaderState.timeCommitCh,
+		r.configurations.latest,
+		getTimestamp())
+	r.leaderState.inflightCommit = list.New()
 
 	// Cleanup state on step down
 	defer func() {
@@ -444,6 +454,9 @@ func (r *Raft) runLeader() {
 	}
 	r.dispatchLogs([]*logFuture{noop})
 
+	// feiran
+	go r.leaderTimeCommitLoop()
+
 	// Sit in the leader loop until we step down
 	r.leaderLoop()
 }
@@ -475,6 +488,8 @@ func (r *Raft) startStopReplication() {
 				notify:      make(map[*verifyFuture]struct{}),
 				notifyCh:    make(chan struct{}, 1),
 				stepDown:    r.leaderState.stepDown,
+				// feiran
+				timeCommitment: r.leaderState.timeCommitment,
 			}
 			r.leaderState.replState[server.ID] = s
 			r.goFunc(func() { r.replicate(s) })
@@ -910,6 +925,8 @@ func (r *Raft) dispatchLogs(applyLogs []*logFuture) {
 		return
 	}
 	r.leaderState.commitment.match(r.localID, lastIndex)
+	// feiran
+	r.leaderState.timeCommitment.match(r.localID, getTimestamp())
 
 	// Update the last log since it's on disk now
 	r.setLastLog(lastIndex, term)
@@ -1052,6 +1069,8 @@ func (r *Raft) appendEntries(rpc RPC, a *AppendEntriesRequest) {
 		LastLog:        r.getLastIndex(),
 		Success:        false,
 		NoRetryBackoff: false,
+		// Feiran
+		Timestamp: getTimestamp(),
 	}
 	var rpcErr error
 	defer func() {
@@ -1212,6 +1231,7 @@ func (r *Raft) appendEntries(rpc RPC, a *AppendEntriesRequest) {
 	r.setLastContact()
 	// Feiran
 	r.resetTargetPriority()
+	resp.Timestamp = getTimestamp()
 	return
 }
 
@@ -1736,4 +1756,28 @@ func (r *Raft) assignTimestamp(log *logFuture) {
 
 	// r.logger.Printf("[DEBUG] raft: assigning a new timestamp %v\n", formatTimestamp(timestamp))
 	log.log.Timestamp = timestamp
+}
+
+// feiran
+func (r *Raft) leaderTimeCommitLoop() {
+	for r.getState() == Leader {
+		select {
+		case <-r.leaderState.timeCommitCh:
+			commitTime := r.leaderState.timeCommitment.getCommitTime()
+			r.logger.Printf("[DEBUG] raft: commit time %v\n", formatTimestamp(commitTime))
+			for {
+				e := r.leaderState.inflightCommit.Front()
+				if e == nil {
+					break
+				}
+				commitLog := e.Value.(*commitTuple)
+				r.logger.Printf("[DEBUG] raft: entry timestamp %v\n", formatTimestamp(commitLog.log.Timestamp))
+				if commitLog.log.Timestamp > commitTime {
+					break
+				}
+				commitLog.future.complete()
+				r.leaderState.inflightCommit.Remove(e)
+			}
+		}
+	}
 }

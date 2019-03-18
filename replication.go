@@ -78,6 +78,9 @@ type followerReplication struct {
 	// allowPipeline is used to determine when to pipeline the AppendEntries RPCs.
 	// It is private to this replication goroutine.
 	allowPipeline bool
+
+	// feiran
+	timeCommitment *timeCommitment
 }
 
 // notifyAll is used to notify all the waiting verify futures
@@ -217,6 +220,7 @@ START:
 		updateLastAppended(s, &req)
 
 		// Feiran
+		updateLastAppendedTime(s, &resp)
 		r.handleFastUpdate(s, &req, &resp)
 
 		// Clear any failures, allow pipelining
@@ -510,6 +514,7 @@ func (r *Raft) pipelineDecode(s *followerReplication, p AppendPipeline, stopCh, 
 			updateLastAppended(s, req)
 
 			// Feiran
+			updateLastAppendedTime(s, resp)
 			r.handleFastUpdate(s, req, resp)
 		case <-stopCh:
 			return
@@ -612,6 +617,11 @@ func updateLastAppended(s *followerReplication, req *AppendEntriesRequest) {
 
 	// Notify still leader
 	s.notifyAll(true)
+}
+
+// feirna
+func updateLastAppendedTime(s *followerReplication, resp *AppendEntriesResponse) {
+	s.timeCommitment.match(s.peer.ID, resp.Timestamp)
 }
 
 // Feiran

@@ -69,6 +69,7 @@ type AppendEntriesResponse struct {
 	// Feiran
 	LocalTerms    []uint64
 	NextSafeTimes []int64
+	Timestamp     int64
 }
 
 // See WithRPCHeader.
