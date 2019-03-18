@@ -7,6 +7,7 @@ import (
 	"io"
 	"io/ioutil"
 	"math"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -90,6 +91,7 @@ type leaderState struct {
 	timeCommitCh   chan struct{}
 	timeCommitment *timeCommitment
 	inflightCommit *list.List
+	inflightLock   sync.Mutex
 }
 
 // setLeader is used to modify the current leader of the cluster
@@ -411,6 +413,10 @@ func (r *Raft) runLeader() {
 		r.leaderState.replState = nil
 		r.leaderState.notify = nil
 		r.leaderState.stepDown = nil
+		// feiran
+		r.leaderState.timeCommitCh = nil
+		r.leaderState.timeCommitment = nil
+		r.leaderState.inflightCommit = nil
 
 		// If we are stepping down for some reason, no known leader.
 		// We may have stepped down due to an RPC call, which would
@@ -1768,7 +1774,9 @@ func (r *Raft) leaderTimeCommitLoop() {
 			commitTime := r.leaderState.timeCommitment.getCommitTime()
 			// r.logger.Printf("[DEBUG] raft: commit time %v\n", formatTimestamp(commitTime))
 			for {
+				r.leaderState.inflightLock.Lock()
 				e := r.leaderState.inflightCommit.Front()
+				r.leaderState.inflightLock.Unlock()
 				if e == nil {
 					break
 				}
@@ -1778,7 +1786,9 @@ func (r *Raft) leaderTimeCommitLoop() {
 					break
 				}
 				commitLog.future.complete()
+				r.leaderState.inflightLock.Lock()
 				r.leaderState.inflightCommit.Remove(e)
+				r.leaderState.inflightLock.Unlock()
 			}
 		}
 	}

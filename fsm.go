@@ -67,7 +67,9 @@ func (r *Raft) runFSM() {
 				resp = r.fsm.Apply2(req.log, nil)
 			}
 			if r.getState() == Leader {
+				r.leaderState.inflightLock.Lock()
 				r.leaderState.inflightCommit.PushBack(req)
+				r.leaderState.inflightLock.Unlock()
 			}
 			
 			metrics.MeasureSince([]string{"raft", "fsm", "apply"}, start)
