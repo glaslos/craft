@@ -92,6 +92,7 @@ type leaderState struct {
 	timeCommitment *timeCommitment
 	inflightCommit *list.List
 	inflightLock   sync.Mutex
+	syncEntryCh chan struct{}
 }
 
 // setLeader is used to modify the current leader of the cluster
@@ -381,6 +382,7 @@ func (r *Raft) runLeader() {
 		r.configurations.latest,
 		getTimestamp())
 	r.leaderState.inflightCommit = list.New()
+	r.leaderState.syncEntryCh = make(chan struct{}, 1)
 
 	// Cleanup state on step down
 	defer func() {
@@ -417,6 +419,7 @@ func (r *Raft) runLeader() {
 		r.leaderState.timeCommitCh = nil
 		r.leaderState.timeCommitment = nil
 		r.leaderState.inflightCommit = nil
+		r.leaderState.syncEntryCh = nil
 
 		// If we are stepping down for some reason, no known leader.
 		// We may have stepped down due to an RPC call, which would
@@ -1215,21 +1218,22 @@ func (r *Raft) appendEntries(rpc RPC, a *AppendEntriesRequest) {
 		resp.LocalTerms = localTerms
 		resp.NextSafeTimes = nextSafeTimes
 
-		// if !r.isSyncRequest(a) {
-		// 	lastEntryTimestamp := a.Entries[len(a.Entries)-1].Timestamp
-		// 	// every local leader replica on this server sends a sync request
-		// 	for i, replica := range r.localReplicas {
-		// 		// the local leader has a smaller safe time than incoming entry,
-		// 		// need to add a sync entry to unblock incoming entry
-		// 		if replica != r && replica.getState() == Leader &&
-		// 			nextSafeTimes[i] < lastEntryTimestamp &&
-		// 			atomic.LoadInt64(&replica.maxTimestamp) < lastEntryTimestamp {
-		// 			// 	r.logger.Printf("[DEBUG] ~~~~ fast update: group %v next safe time %v, last entry ts %v, adding a sync entry\n",
-		// 			// i, formatTimestamp(nextSafeTimes[i]), formatTimestamp(lastEntryTimestamp))
-		// 			replica.addSyncEntry()
-		// 		}
-		// 	}
-		// }
+		if !r.isSyncRequest(a) {
+			lastEntryTimestamp := a.Entries[len(a.Entries)-1].Timestamp
+			// every local leader replica on this server sends a sync request
+			for i, replica := range r.localReplicas {
+				// the local leader has a smaller safe time than incoming entry,
+				// need to add a sync entry to unblock incoming entry
+				if replica != r && replica.getState() == Leader &&
+					nextSafeTimes[i] < lastEntryTimestamp &&
+					atomic.LoadInt64(&replica.maxTimestamp) < lastEntryTimestamp {
+					// 	r.logger.Printf("[DEBUG] ~~~~ fast update: group %v next safe time %v, last entry ts %v, adding a sync entry\n",
+					// i, formatTimestamp(nextSafeTimes[i]), formatTimestamp(lastEntryTimestamp))
+					// replica.addSyncEntry()
+					asyncNotifyCh(replica.leaderState.syncEntryCh)
+				}
+			}
+		}
 
 		r.merger.AddFutureSafeTime(r.groupID, a.Entries[len(a.Entries)-1].Index, a.NextSafeTime)
 	}
@@ -1790,6 +1794,16 @@ func (r *Raft) leaderTimeCommitLoop() {
 				r.leaderState.inflightCommit.Remove(e)
 				r.leaderState.inflightLock.Unlock()
 			}
+		}
+	}
+}
+
+// feiran
+func (r *Raft) leaderSyncEntryLoop() {
+	for r.getState() == Leader {
+		select {
+		case <-r.leaderState.syncEntryCh:
+			r.addSyncEntry()
 		}
 	}
 }
