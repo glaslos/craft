@@ -89,7 +89,7 @@ func (c *timeCommitment) recalculate() {
 	// find smallest
 	var quorumMatchTime int64
 	for _, t := range c.matchTimes {
-		if quorumMatchTime == 0 || quorumMatchTime < t {
+		if quorumMatchTime == 0 || t < quorumMatchTime {
 			quorumMatchTime = t
 		}
 	}
