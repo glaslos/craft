@@ -100,7 +100,7 @@ func (c *commitment) recalculate() {
 	}
 }
 
-// Feiran
+// craft
 func (c *commitment) getMatchIndexForServer(server ServerID) uint64 {
 	c.Lock()
 	defer c.Unlock()

@@ -48,7 +48,7 @@ type Log struct {
 	// Data holds the log entry's type-specific data.
 	Data []byte
 
-	// Feiran
+	// craft
 	// Timestamp of the entry
 	Timestamp int64
 }

@@ -46,7 +46,7 @@ type Server struct {
 	ID ServerID
 	// Address is its network address that a transport can contact.
 	Address ServerAddress
-	// Feiran
+	// craft
 	// election priority
 	Priority int
 }

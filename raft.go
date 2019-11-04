@@ -87,12 +87,12 @@ type leaderState struct {
 	replState  map[ServerID]*followerReplication
 	notify     map[*verifyFuture]struct{}
 	stepDown   chan struct{}
-	// feiran
+	// craft
 	timeCommitCh   chan struct{}
 	timeCommitment *timeCommitment
-	inflightCommit *list.List
+	inflightCommit *list.List // list of log entries that are committed but not applied
 	inflightLock   sync.Mutex
-	syncEntryCh chan struct{}
+	syncEntryCh    chan struct{}
 }
 
 // setLeader is used to modify the current leader of the cluster
@@ -104,7 +104,7 @@ func (r *Raft) setLeader(leader ServerAddress) {
 	if oldLeader != leader {
 		r.observe(LeaderObservation{leader: leader})
 	}
-	// Feiran
+	// craft
 	for _, server := range r.configurations.latest.Servers {
 		if server.Address == r.leader {
 			r.leaderID = server.ID
@@ -251,7 +251,7 @@ func (r *Raft) liveBootstrap(configuration Configuration) error {
 	r.setLastLog(entry.Index, entry.Term)
 	r.processConfigurationLogEntry(&entry)
 
-	// Feiran
+	// craft
 	r.initPriority(configuration)
 	r.initFastUpdate(configuration)
 
@@ -299,7 +299,7 @@ func (r *Raft) runCandidate() {
 				r.logger.Printf("[INFO] raft: Election won. Tally: %d", grantedVotes)
 				r.setState(Leader)
 				r.setLeader(r.localAddr)
-				// Feiran
+				// craft
 				r.resetTargetPriority()
 				r.isResigning = false
 				// wait out clock uncertainty
@@ -340,7 +340,7 @@ func (r *Raft) runCandidate() {
 			// Election failed! Restart the election. We simply return,
 			// which will kick us back into runCandidate
 			r.logger.Printf("[WARN] raft: Election timeout reached, restarting election")
-			// Feiran
+			// craft
 			r.decayTargetPriority()
 			return
 
@@ -376,7 +376,7 @@ func (r *Raft) runLeader() {
 	r.leaderState.replState = make(map[ServerID]*followerReplication)
 	r.leaderState.notify = make(map[*verifyFuture]struct{})
 	r.leaderState.stepDown = make(chan struct{}, 1)
-	// feiran
+	// craft
 	r.leaderState.timeCommitCh = make(chan struct{}, 1)
 	r.leaderState.timeCommitment = newTimeCommitment(r.leaderState.timeCommitCh,
 		r.configurations.latest,
@@ -415,7 +415,7 @@ func (r *Raft) runLeader() {
 		r.leaderState.replState = nil
 		r.leaderState.notify = nil
 		r.leaderState.stepDown = nil
-		// feiran
+		// craft
 		r.leaderState.timeCommitCh = nil
 		r.leaderState.timeCommitment = nil
 		r.leaderState.inflightCommit = nil
@@ -463,7 +463,7 @@ func (r *Raft) runLeader() {
 	}
 	r.dispatchLogs([]*logFuture{noop})
 
-	// feiran
+	// craft
 	go r.leaderTimeCommitLoop()
 
 	// Sit in the leader loop until we step down
@@ -497,7 +497,7 @@ func (r *Raft) startStopReplication() {
 				notify:      make(map[*verifyFuture]struct{}),
 				notifyCh:    make(chan struct{}, 1),
 				stepDown:    r.leaderState.stepDown,
-				// feiran
+				// craft
 				timeCommitment: r.leaderState.timeCommitment,
 			}
 			r.leaderState.replState[server.ID] = s
@@ -572,7 +572,7 @@ func (r *Raft) leaderLoop() {
 				}
 			}
 
-			// Feiran
+			// craft
 			// notify peers to commit
 			for _, f := range r.leaderState.replState {
 				asyncNotifyCh(f.triggerCh)
@@ -644,7 +644,7 @@ func (r *Raft) leaderLoop() {
 
 		case newLog := <-r.applyCh:
 			// Group commit, gather all the ready commits
-			// Feiran
+			// craft
 			if !r.isSyncEntry(newLog.log) {
 				atomic.StoreInt64(&r.inflightTimestamp, getTimestamp())
 			}
@@ -739,7 +739,6 @@ func (r *Raft) checkLeaderLease() time.Duration {
 			if diff <= 3*r.conf.LeaderLeaseTimeout {
 				r.logger.Printf("[WARN] raft: Failed to contact %v in %v", peer, diff)
 			} else {
-				// Feiran
 				// r.logger.Printf("[DEBUG] raft: Failed to contact %v in %v", peer, diff)
 			}
 		}
@@ -934,7 +933,7 @@ func (r *Raft) dispatchLogs(applyLogs []*logFuture) {
 		return
 	}
 	r.leaderState.commitment.match(r.localID, lastIndex)
-	// feiran
+	// craft
 	if len(applyLogs) > 0 {
 		r.leaderState.timeCommitment.match(r.localID, applyLogs[len(applyLogs)-1].log.Timestamp)
 	}
@@ -1068,11 +1067,6 @@ func (r *Raft) processHeartbeat(rpc RPC) {
 // only be called from the main thread.
 func (r *Raft) appendEntries(rpc RPC, a *AppendEntriesRequest) {
 	defer metrics.MeasureSince([]string{"raft", "rpc", "appendEntries"}, time.Now())
-	// Feiran
-	// if len(a.Entries) > 0 {
-	// 	r.logger.Printf("[DEBUG] raft: group %v receiving appendEntries from index %v to index %v, latency %v\n",
-	// 	r.groupID, a.Entries[0].Index, a.Entries[len(a.Entries) - 1].Index, time.Since(time.Unix(0, a.Entries[0].Timestamp)))
-	// }
 	// Setup a response
 	resp := &AppendEntriesResponse{
 		RPCHeader:      r.getRPCHeader(),
@@ -1080,7 +1074,7 @@ func (r *Raft) appendEntries(rpc RPC, a *AppendEntriesRequest) {
 		LastLog:        r.getLastIndex(),
 		Success:        false,
 		NoRetryBackoff: false,
-		// Feiran
+		// craft
 		Timestamp: getTimestamp(),
 	}
 	var rpcErr error
@@ -1183,7 +1177,7 @@ func (r *Raft) appendEntries(rpc RPC, a *AppendEntriesRequest) {
 			last := newEntries[n-1]
 			r.setLastLog(last.Index, last.Term)
 
-			// Feiran
+			// craft
 			atomic.StoreInt64(&r.maxTimestamp, newEntries[n-1].Timestamp)
 		}
 
@@ -1203,7 +1197,7 @@ func (r *Raft) appendEntries(rpc RPC, a *AppendEntriesRequest) {
 		metrics.MeasureSince([]string{"raft", "rpc", "appendEntries", "processLogs"}, start)
 	}
 
-	// Feiran
+	// craft
 	// fast update info
 	if len(a.Entries) > 0 && len(a.ApplyIndexes) == r.nGroups {
 		localTerms := make([]uint64, r.nGroups)
@@ -1241,7 +1235,7 @@ func (r *Raft) appendEntries(rpc RPC, a *AppendEntriesRequest) {
 	// Everything went well, set success
 	resp.Success = true
 	r.setLastContact()
-	// Feiran
+	// craft
 	r.resetTargetPriority()
 	resp.Timestamp = getTimestamp()
 	return
@@ -1256,7 +1250,7 @@ func (r *Raft) processConfigurationLogEntry(entry *Log) {
 		r.configurations.committedIndex = r.configurations.latestIndex
 		r.configurations.latest = decodeConfiguration(entry.Data)
 		r.configurations.latestIndex = entry.Index
-		// Feiran
+		// craft
 		configuration := decodeConfiguration(entry.Data)
 		r.initPriority(configuration)
 		r.initFastUpdate(configuration)
@@ -1347,7 +1341,7 @@ func (r *Raft) requestVote(rpc RPC, req *RequestVoteRequest) {
 		return
 	}
 
-	// Feiran
+	// craft
 	// reject if it does not reach target priority
 	for _, server := range r.configurations.latest.Servers {
 		if server.Address == candidate && server.Priority < r.targetPriority {
@@ -1601,7 +1595,7 @@ func (r *Raft) setState(state RaftState) {
 	}
 }
 
-// Feiran
+// craft
 // initPriority computes the max priority in configuration,
 // used after a configuration change
 func (r *Raft) initPriority(configuration Configuration) {
@@ -1616,12 +1610,12 @@ func (r *Raft) initPriority(configuration Configuration) {
 	r.targetPriority = r.maxPriority
 }
 
-// Feiran
+// craft
 func (r *Raft) resetTargetPriority() {
 	r.targetPriority = r.maxPriority
 }
 
-// Feiran
+// craft
 func (r *Raft) decayTargetPriority() {
 	targetPriority := r.targetPriority / 2
 	if targetPriority < 1 {
@@ -1631,14 +1625,14 @@ func (r *Raft) decayTargetPriority() {
 	// r.logger.Printf("[DEBUG] raft: decay target priority to %v\n", r.targetPriority)
 }
 
-// Feiran
+// craft
 // addSyncEntry adds a no-op entry for updating safe time
 func (r *Raft) addSyncEntry() {
 	// return
 	r.Apply(make([]byte, 0), time.Second)
 }
 
-// Feiran
+// craft
 func (r *Raft) isSyncRequest(a *AppendEntriesRequest) bool {
 	ret := true
 	for _, entry := range a.Entries {
@@ -1649,12 +1643,12 @@ func (r *Raft) isSyncRequest(a *AppendEntriesRequest) bool {
 	return ret
 }
 
-// Feiran
+// craft
 func (r *Raft) isSyncEntry(log Log) bool {
 	return len(log.Data) == 0
 }
 
-// Feiran
+// craft
 // nextSafeTime calculates the next safe time after the given index
 func (r *Raft) nextSafeTime(index uint64) int64 {
 	switch r.getState() {
@@ -1712,13 +1706,13 @@ func (r *Raft) nextSafeTime(index uint64) int64 {
 	}
 }
 
-// Feiran
+// craft
 type fastUpdateInfo struct {
 	term         uint64
 	nextSafeTime int64
 }
 
-// Feiran
+// craft
 func (r *Raft) initFastUpdate(configuration Configuration) {
 	r.fastUpdateInfo = make([]map[ServerID]*fastUpdateInfo, r.nGroups)
 	for i := 0; i < len(r.fastUpdateInfo); i++ {
@@ -1729,7 +1723,7 @@ func (r *Raft) initFastUpdate(configuration Configuration) {
 	}
 }
 
-// Feiran
+// craft
 func (r *Raft) isLogCommands(a *AppendEntriesRequest) bool {
 	ret := true
 	for _, entry := range a.Entries {
@@ -1740,12 +1734,12 @@ func (r *Raft) isLogCommands(a *AppendEntriesRequest) bool {
 	return ret
 }
 
-// Feiran
+// craft
 func formatTimestamp(t int64) string {
 	return time.Unix(0, t).Format("15:04:05.000000")
 }
 
-// Feiran
+// craft
 func getTimestamp() int64 {
 	t := time.Now().UnixNano()
 	t = t/10*10 + int64(clock.GetUncertaintyFactor())
@@ -1753,12 +1747,12 @@ func getTimestamp() int64 {
 	return t
 }
 
-// Feiran
+// craft
 func getUncertaintyFromTimestamp(t int64) int {
 	return int(t % 10)
 }
 
-// Feiran
+// craft
 // assign timestamps to the log, used in leader loop
 func (r *Raft) assignTimestamp(log *logFuture) {
 	timestamp := getTimestamp()
@@ -1770,7 +1764,7 @@ func (r *Raft) assignTimestamp(log *logFuture) {
 	log.log.Timestamp = timestamp
 }
 
-// feiran
+// craft
 func (r *Raft) leaderTimeCommitLoop() {
 	for r.getState() == Leader {
 		select {
@@ -1798,7 +1792,8 @@ func (r *Raft) leaderTimeCommitLoop() {
 	}
 }
 
-// feiran
+// craft
+// leaderSyncEntryLoop checks whether to send a no-op entry
 func (r *Raft) leaderSyncEntryLoop() {
 	for r.getState() == Leader {
 		select {

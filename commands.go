@@ -34,11 +34,11 @@ type AppendEntriesRequest struct {
 	// Commit index on the leader
 	LeaderCommitIndex uint64
 
-	// Feiran
+	// craft
 	// apply indexes for local replicas
 	ApplyIndexes []uint64
 
-	// Feiran
+	// craft
 	// next safe time for this group after replicating entries in this request
 	NextSafeTime int64
 }
@@ -66,7 +66,7 @@ type AppendEntriesResponse struct {
 	// but there's no need to wait/back-off the next attempt.
 	NoRetryBackoff bool
 
-	// Feiran
+	// craft
 	LocalTerms    []uint64
 	NextSafeTimes []int64
 	Timestamp     int64

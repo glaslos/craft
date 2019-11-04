@@ -36,7 +36,7 @@ type ApplyFuture interface {
 	// by the FSM.Apply method. This must not be called
 	// until after the Error method has returned.
 	Response() interface{}
-	// Feiran
+	// craft
 	// Wait waits for a log entry gets executed
 	Wait()
 	// complete notifies the completion of execution
@@ -80,7 +80,7 @@ func (e errorFuture) Index() uint64 {
 	return 0
 }
 
-// Feiran
+// craft
 func (e errorFuture) Wait()     {}
 func (e errorFuture) complete() {}
 
@@ -90,13 +90,13 @@ type deferError struct {
 	err       error
 	errCh     chan error
 	responded bool
-	// Feiran
+	// craft
 	done chan struct{}
 }
 
 func (d *deferError) init() {
 	d.errCh = make(chan error, 1)
-	// Feiran
+	// craft
 	d.done = make(chan struct{}, 1)
 }
 
@@ -160,13 +160,13 @@ func (l *logFuture) Index() uint64 {
 	return l.log.Index
 }
 
-// Feiran
+// craft
 // complete is called when the entry is executed
 func (l *logFuture) complete() {
 	asyncNotifyCh(l.done)
 }
 
-// Feiran
+// craft
 // Wait waits for execution
 func (l *logFuture) Wait() {
 	<-l.done

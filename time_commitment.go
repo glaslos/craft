@@ -4,29 +4,29 @@ import (
 	"sync"
 )
 
-// Commitment is used to advance the leader's commit index. The leader and
+// TimeCommitment is used to advance the leader's commit index. The leader and
 // replication goroutines report in newly written entries with Match(), and
-// this notifies on commitCh when the commit index has advanced.
+// this notifies on commitCh when the commit timestamp has advanced.
 type timeCommitment struct {
-	// protects matchTimes and commitIndex
+	// protects matchTimes and commitTime
 	sync.Mutex
-	// notified when commitIndex increases
+	// notified when commitTime increases
 	commitCh chan struct{}
-	// voter ID to log index: the server stores up through this log entry
+	// voter ID to timestamps: the server stores up through this log entry
 	matchTimes map[ServerID]int64
 	// a quorum stores up through this log entry. monotonically increases.
 	commitTime int64
-	// the first index of this leader's term: this needs to be replicated to a
+	// the first timestamp of this leader's term: this needs to be replicated to a
 	// majority of the cluster before this leader may mark anything committed
 	// (per Raft's commitment rule)
 	startTime int64
 }
 
-// newCommitment returns an commitment struct that notifies the provided
-// channel when log entries have been committed. A new commitment struct is
+// newTimeCommitment returns an timeCommitment struct that notifies the provided
+// channel when log entries have been committed. A new timeCommitment struct is
 // created each time this server becomes leader for a particular term.
 // 'configuration' is the servers in the cluster.
-// 'startTime' is the first index created in this term (see
+// 'startTime' is the first timestamp created in this term (see
 // its description above).
 func newTimeCommitment(commitCh chan struct{}, configuration Configuration, startTime int64) *timeCommitment {
 	matchTimes := make(map[ServerID]int64)
@@ -44,7 +44,7 @@ func newTimeCommitment(commitCh chan struct{}, configuration Configuration, star
 }
 
 // Called when a new cluster membership configuration is created: it will be
-// used to determine commitment from now on. 'configuration' is the servers in
+// used to determine timeCommitment from now on. 'configuration' is the servers in
 // the cluster.
 func (c *timeCommitment) setConfiguration(configuration Configuration) {
 	c.Lock()
@@ -79,7 +79,7 @@ func (c *timeCommitment) match(server ServerID, matchTime int64) {
 	}
 }
 
-// Internal helper to calculate new commitIndex from matchTimes.
+// Internal helper to calculate new commitTime from matchTimes.
 // Must be called with lock held.
 func (c *timeCommitment) recalculate() {
 	if len(c.matchTimes) == 0 {

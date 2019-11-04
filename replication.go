@@ -79,7 +79,8 @@ type followerReplication struct {
 	// It is private to this replication goroutine.
 	allowPipeline bool
 
-	// feiran
+	// craft
+	// timeCommitment
 	timeCommitment *timeCommitment
 }
 
@@ -195,7 +196,7 @@ START:
 	// Make the RPC call
 	start = time.Now()
 	if err := r.trans.AppendEntries(s.peer.ID, s.peer.Address, &req, &resp); err != nil {
-		// Feiran
+		// craft
 		// avoid too much logging
 		if s.failures < 2 {
 			r.logger.Printf("[ERR] raft: Failed to AppendEntries to %v: %v", s.peer, err)
@@ -219,7 +220,7 @@ START:
 		// Update our replication state
 		updateLastAppended(s, &req)
 
-		// Feiran
+		// craft
 		updateLastAppendedTime(s, &resp)
 		r.handleFastUpdate(s, &req, &resp)
 
@@ -365,7 +366,7 @@ func (r *Raft) heartbeat(s *followerReplication, stopCh chan struct{}) {
 
 		start := time.Now()
 		if err := r.trans.AppendEntries(s.peer.ID, s.peer.Address, &req, &resp); err != nil {
-			// Feiran
+			// craft
 			if failures < 2 {
 				r.logger.Printf("[ERR] raft: Failed to heartbeat to %v: %v", s.peer.Address, err)
 			}
@@ -380,21 +381,21 @@ func (r *Raft) heartbeat(s *followerReplication, stopCh chan struct{}) {
 			metrics.MeasureSince([]string{"raft", "replication", "heartbeat", string(s.peer.ID)}, start)
 			s.notifyAll(resp.Success)
 
-			// Feiran
+			// craft
 			if s.peer.Priority > r.priority {
 				r.logger.Printf("[DEBUG] raft: peer %v has higher priority than mine (%v, %v), prepare to step down\n",
 					s.peer.Address, s.peer.Priority, r.priority)
 				r.isResigning = true
 			}
 			lastIndex := r.getLastIndex()
-			// Feiran
+			// craft
 			// step down if a follwer has higher priority and its log is up-to-date
 			if r.isResigning && s.peer.Priority > r.priority && s.nextIndex >= lastIndex {
 				r.stepDown(s)
 			}
 		}
 
-		// Feiran
+		// craft
 		if r.merger.NeedSync() {
 			r.addSyncEntry()
 		}
@@ -490,7 +491,7 @@ func (r *Raft) pipelineDecode(s *followerReplication, p AppendPipeline, stopCh, 
 			req, resp := ready.Request(), ready.Response()
 			appendStats(string(s.peer.ID), ready.Start(), float32(len(req.Entries)))
 
-			// Feiran
+			// craft
 			// if len(req.Entries) > 0 {
 			// 	r.logger.Printf("[DEBUG] raft: group %v index %v receiving response after %v\n",
 			// 	r.groupID, req.Entries[0].Index, time.Since(time.Unix(0, req.Entries[0].Timestamp)))
@@ -513,7 +514,7 @@ func (r *Raft) pipelineDecode(s *followerReplication, p AppendPipeline, stopCh, 
 			// Update our replication state
 			updateLastAppended(s, req)
 
-			// Feiran
+			// craft
 			updateLastAppendedTime(s, resp)
 			r.handleFastUpdate(s, req, resp)
 		case <-stopCh:
@@ -534,7 +535,7 @@ func (r *Raft) setupAppendEntries(s *followerReplication, req *AppendEntriesRequ
 	if err := r.setNewLogs(req, nextIndex, lastIndex); err != nil {
 		return err
 	}
-	// Feiran
+	// craft
 	if r.nGroups > 1 {
 		req.ApplyIndexes = r.merger.GetApplyIndexes()
 		// next safe time after replicating entries in this request
@@ -619,19 +620,19 @@ func updateLastAppended(s *followerReplication, req *AppendEntriesRequest) {
 	s.notifyAll(true)
 }
 
-// feirna
+// craft
 func updateLastAppendedTime(s *followerReplication, resp *AppendEntriesResponse) {
 	s.timeCommitment.match(s.peer.ID, resp.Timestamp)
 }
 
-// Feiran
+// craft
 func (r *Raft) stepDown(s *followerReplication) {
 	r.logger.Printf("[DEBUG] raft: stepping down from leader\n")
 	s.notifyAll(false) // No longer leader
 	asyncNotifyCh(s.stepDown)
 }
 
-// Feiran
+// craft
 func (r *Raft) handleFastUpdate(s *followerReplication, req *AppendEntriesRequest, resp *AppendEntriesResponse) {
 	// r.logger.Printf("[DEBUG] fast update: handle fast update from peer %v\n", s.peer.ID)
 	if len(resp.LocalTerms) != r.nGroups || len(r.fastUpdateInfo) != r.nGroups {

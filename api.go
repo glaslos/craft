@@ -52,7 +52,7 @@ var (
 	// cluster that already has state present.
 	ErrCantBootstrap = errors.New("bootstrap only works on new clusters")
 
-	// Feiran
+	// craft
 	// ErrRejected is returned when the leader rejects requests because
 	// it is stepping down, or is waiting out clock error
 	ErrRejected = errors.New("leader rejects the request")
@@ -169,7 +169,7 @@ type Raft struct {
 	observersLock sync.RWMutex
 	observers     map[uint64]*Observer
 
-	// Feiran
+	// craft
 	groupID  int
 	nGroups  int
 	leaderID ServerID
@@ -469,7 +469,7 @@ func NewRaft(conf *Config, fsm FSM, logs LogStore, stable StableStore, snaps Sna
 		return nil, fmt.Errorf("when running with ProtocolVersion < 3, LocalID must be set to the network address")
 	}
 
-	// Feiran
+	// craft
 	env := os.Getenv(clockOffsetEnv)
 	clockOffset, err = strconv.ParseInt(env, 10, 64)
 	if err != nil {
@@ -503,7 +503,7 @@ func NewRaft(conf *Config, fsm FSM, logs LogStore, stable StableStore, snaps Sna
 		bootstrapCh:           make(chan *bootstrapFuture),
 		observers:             make(map[uint64]*Observer),
 
-		// Feiran
+		// craft
 		priority:       1,
 		maxPriority:    1,
 		targetPriority: 1,
@@ -548,7 +548,7 @@ func NewRaft(conf *Config, fsm FSM, logs LogStore, stable StableStore, snaps Sna
 	// to be called concurrently with a blocking RPC.
 	trans.SetHeartbeatHandler(r.processHeartbeat)
 
-	// Feiran
+	// craft
 	// this flag is set when a higher priority follower is found
 	// leader stops processing new requests, and steps down when appropriate
 	r.isResigning = false
@@ -658,7 +658,7 @@ func (r *Raft) Apply(cmd []byte, timeout time.Duration) ApplyFuture {
 		timer = time.After(timeout)
 	}
 
-	// Feiran
+	// craft
 	// reject request if the leader is in passive state
 	// sync request should still go through
 	if r.isResigning && len(cmd) > 0 {

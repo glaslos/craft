@@ -30,7 +30,7 @@ type FSM interface {
 	// state.
 	Restore(io.ReadCloser) error
 
-	// Feiran
+	// craft
 	// Apply2 is same as Apply with a callback function that is bind to the 
 	// respond function of the log future
 	Apply2(*Log, func()) interface{}
@@ -59,7 +59,7 @@ func (r *Raft) runFSM() {
 		var resp interface{}
 		if req.log.Type == LogCommand {
 			start := time.Now()
-			// Feiran
+			// craft
 			// resp = r.fsm.Apply(req.log)
 			if req.future != nil {
 				resp = r.fsm.Apply2(req.log, req.future.complete)
@@ -83,7 +83,7 @@ func (r *Raft) runFSM() {
 		if req.future != nil {
 			req.future.response = resp
 			req.future.respond(nil)
-			// Feiran
+			// craft
 			// single group, execution is completed
 			if r.nGroups <= 1 {
 				req.future.complete()

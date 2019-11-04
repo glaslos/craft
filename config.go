@@ -194,7 +194,7 @@ type Config struct {
 	// is used.
 	Logger *log.Logger
 
-	// Feiran
+	// craft
 	// MaxClockUncertainty is the maximum accepting clock error bound in fast update,
 	// expressed in terms of power of 10, in nanoseconds
 	MaxClockUncertainty int
@@ -214,7 +214,7 @@ func DefaultConfig() *Config {
 		SnapshotInterval:   120 * time.Second,
 		SnapshotThreshold:  8192,
 		LeaderLeaseTimeout: 500 * time.Millisecond,
-		// Feiran
+		// craft
 		MaxClockUncertainty: 6,
 	}
 }
