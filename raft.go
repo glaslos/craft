@@ -12,7 +12,6 @@ import (
 	"time"
 
 	metrics "github.com/armon/go-metrics"
-	"gitlab.com/feiranwang/echo/clock"
 )
 
 const (
@@ -1742,7 +1741,7 @@ func formatTimestamp(t int64) string {
 // craft
 func getTimestamp() int64 {
 	t := time.Now().UnixNano()
-	t = t/10*10 + int64(clock.GetUncertaintyFactor())
+	t = t/10*10 + int64(getClockUncertainty())
 	t += clockOffset
 	return t
 }
