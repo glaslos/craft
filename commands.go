@@ -1,4 +1,4 @@
-package raft
+package craft
 
 // RPCHeader is a common sub-structure used to pass along protocol version and
 // other information about the cluster. For older Raft implementations before

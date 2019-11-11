@@ -1,4 +1,4 @@
-package raft
+package craft
 
 // getClockUncertainty returns the current clock uncertainty, i.e., max possible clock offsets
 // between any two clocks in the network, in the exponent of 10 nanoseconds.

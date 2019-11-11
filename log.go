@@ -1,4 +1,4 @@
-package raft
+package craft
 
 // LogType describes various types of log entries.
 type LogType uint8

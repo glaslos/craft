@@ -1,4 +1,4 @@
-package raft
+package craft
 
 import (
 	"errors"
@@ -13,7 +13,6 @@ import (
 	// "sync/atomic"
 
 	metrics "github.com/armon/go-metrics"
-	"gitlab.com/feiranwang/echo/merger"
 )
 
 var (
@@ -173,7 +172,7 @@ type Raft struct {
 	groupID  int
 	nGroups  int
 	leaderID ServerID
-	merger   *merger.Merger
+	merger   *Merger
 	// replicas on the same server
 	localReplicas []*Raft
 	// max timestamp assigned (for leader), or seen (for follower) so far
@@ -1068,7 +1067,7 @@ func (r *Raft) AppliedIndex() uint64 {
 }
 
 // SetupGroups sets the Raft group replicas
-func (r *Raft) SetupGroups(groupID int, localReplicas []*Raft, merger *merger.Merger) {
+func (r *Raft) SetupGroups(groupID int, localReplicas []*Raft, merger *Merger) {
 	r.groupID = groupID
 	r.nGroups = len(localReplicas)
 	r.merger = merger
