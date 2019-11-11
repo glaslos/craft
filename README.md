@@ -98,10 +98,13 @@ CRaft is a multi-leader extension to Raft. It tries to solve the single leader b
 and is suitable for uses where high throughput is demanded.
 
 CRaft runs multiple groups of
-Raft concurrently. Each group operates as normal Raft: it elects a leader, and manages a replicated log.  A server may be a leader for a group, and a follower for other groups at the same time. It may also be a follower for every group. The leader server of each group can handle client requests for that group.
+Raft concurrently. Each group operates as normal Raft: it elects a leader, and manages a replicated log.
+A server may be a leader for a group, and a follower for other groups at the same time.
+It may also be a follower for every group. The leader server of each group can handle client requests for that group.
 
 Each log entry contains a timestamp taken by the leader of its group.
-The log entries from different groups are merged into a *merged log* based on timestamps of entries. The merging happens locally on each server. Each server's state machine applies entries in its merged log in order.
+The log entries from different groups are merged into a *merged log* based on timestamps of entries.
+The merging happens locally on each server. Each server's state machine applies entries in its merged log in order.
 
 During normal operation, a client can send requests to any leader server (request leader). 
 The workflow for handling a client request is as follows:
