@@ -14,8 +14,8 @@ var (
 	logger = log.New(os.Stderr, "", log.LstdFlags)
 )
 
-// Entry in merger queue
-type Entry struct {
+// MergerEntry in merger queue
+type MergerEntry struct {
 	Index      uint64
 	GroupID    int
 	Timestamp  int64
@@ -24,8 +24,8 @@ type Entry struct {
 	Done       func()
 }
 
-// GroupLog manages log and metadata for a group
-type GroupLog struct {
+// MergerGroupLog manages log and metadata for a group
+type MergerGroupLog struct {
 	queue        *list.List
 	safeTime     int64
 	isFastUpdate bool
@@ -39,19 +39,19 @@ type GroupLog struct {
 // Merger implements log merger
 type Merger struct {
 	nGroups   int
-	groupLogs []*GroupLog
-	execFunc  func(*Entry)
+	groupLogs []*MergerGroupLog
+	execFunc  func(*MergerEntry)
 
 	mergeCh chan struct{}
 	lock    sync.Mutex
 }
 
 // NewMerger returns a new Merger
-func NewMerger(nGroups int, execFunc func(*Entry)) *Merger {
-	groupLogs := make([]*GroupLog, nGroups)
+func NewMerger(nGroups int, execFunc func(*MergerEntry)) *Merger {
+	groupLogs := make([]*MergerGroupLog, nGroups)
 	for i := 0; i < nGroups; i++ {
 		queue := list.New()
-		groupLogs[i] = &GroupLog{
+		groupLogs[i] = &MergerGroupLog{
 			queue:           queue,
 			safeTime:        0,
 			isFastUpdate:    false,
@@ -102,7 +102,7 @@ func (m *Merger) AddFutureSafeTime(groupID int, index uint64, safeTime int64) {
 }
 
 // Enqueue puts an entry into queue
-func (m *Merger) Enqueue(groupID int, entry *Entry) {
+func (m *Merger) Enqueue(groupID int, entry *MergerEntry) {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 
@@ -178,14 +178,14 @@ func (m *Merger) run() {
 		if e == nil {
 			panic("Fatal error")
 		}
-		entry := queue.Remove(e).(*Entry)
+		entry := queue.Remove(e).(*MergerEntry)
 		m.lock.Unlock()
 
 		m.execFunc(entry)
 	}
 }
 
-// find the next entry to be merged
+// nextMerge finds the next entry to be merged
 // must hold the lock
 func (m *Merger) nextMerge() int {
 	group := -1
@@ -195,7 +195,7 @@ func (m *Merger) nextMerge() int {
 	for i := 0; i < m.nGroups; i++ {
 		e := m.groupLogs[i].queue.Front()
 		if e != nil {
-			entry := e.Value.(*Entry)
+			entry := e.Value.(*MergerEntry)
 			if entry.Timestamp < minTimestamp {
 				minTimestamp = entry.Timestamp
 				group = i
