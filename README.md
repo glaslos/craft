@@ -1,8 +1,8 @@
-raft [![Build Status](https://travis-ci.org/hashicorp/raft.png)](https://travis-ci.org/hashicorp/raft)
+craft
 ====
 
-raft is a [Go](http://www.golang.org) library that manages a replicated
-log and can be used with an FSM to manage replicated state machines. It
+craft is a [Go](http://www.golang.org) library that manages a replicated
+log and can be used with a finite state machine to manage replicated state machines. It
 is a library for providing [consensus](http://en.wikipedia.org/wiki/Consensus_(computer_science)).
 
 The use cases for such a library are far-reaching as replicated state
@@ -12,7 +12,12 @@ fault tolerance as well.
 
 ## Building
 
-If you wish to build raft you'll need Go version 1.2+ installed.
+If you wish to build craft you'll need Go version 1.2+ installed.
+
+Build the library with:
+```
+go build
+```
 
 Please check your installation with:
 
@@ -22,49 +27,33 @@ go version
 
 ## Documentation
 
+**TODO: Update links.**
+
 For complete documentation, see the associated [Godoc](http://godoc.org/github.com/hashicorp/raft).
 
-To prevent complications with cgo, the primary backend `MDBStore` is in a separate repository,
-called [raft-mdb](http://github.com/hashicorp/raft-mdb). That is the recommended implementation
-for the `LogStore` and `StableStore`.
+## Getting started
 
-A pure Go backend using [BoltDB](https://github.com/boltdb/bolt) is also available called
-[raft-boltdb](https://github.com/hashicorp/raft-boltdb). It can also be used as a `LogStore`
-and `StableStore`.
+**TODO: Update links.**
 
-## Tagged Releases
+craft relies on clock synchronization. To get the best performance, the synchronization error
+should be smaller than the one-way delay between any two nodes in the cluster.
 
-As of September 2017, HashiCorp will start using tags for this library to clearly indicate
-major version updates. We recommend you vendor your application's dependency on this library.
-
-* v0.1.0 is the original stable version of the library that was in master and has been maintained
-with no breaking API changes. This was in use by Consul prior to version 0.7.0.
-
-* v1.0.0 takes the changes that were staged in the library-v2-stage-one branch. This version
-manages server identities using a UUID, so introduces some breaking API changes. It also versions
-the Raft protocol, and requires some special steps when interoperating with Raft servers running
-older versions of the library (see the detailed comment in config.go about version compatibility).
-You can reference https://github.com/hashicorp/consul/pull/2222 for an idea of what was required
-to port Consul to these new interfaces.
-
-    This version includes some new features as well, including non voting servers, a new address
-    provider abstraction in the transport layer, and more resilient snapshots.
+An example use of craft is provided [here](), which is a replicated key-value store.
 
 ## Protocol
 
-raft is based on ["Raft: In Search of an Understandable Consensus Algorithm"](https://ramcloud.stanford.edu/wiki/download/attachments/11370504/raft.pdf)
+craft is based on the CRaft consensus protocol, which is based on
+["Raft: In Search of an Understandable Consensus Algorithm"](https://raft.github.io/raft.pdf)
 
-A high level overview of the Raft protocol is described below, but for details please read the full
-[Raft paper](https://ramcloud.stanford.edu/wiki/download/attachments/11370504/raft.pdf)
-followed by the raft source. Any questions about the raft protocol should be sent to the
-[raft-dev mailing list](https://groups.google.com/forum/#!forum/raft-dev).
+A high level overview of the CRaft protocol is described below, but for details please read the full paper.
+This section will first describe the Raft protocol, and then the CRaft protocol.
 
-### Protocol Description
+### Raft
 
-Raft nodes are always in one of three states: follower, candidate or leader. All
-nodes initially start out as a follower. In this state, nodes can accept log entries
-from a leader and cast votes. If no entries are received for some time, nodes
-self-promote to the candidate state. In the candidate state nodes request votes from
+Raft servers are always in one of three states: follower, candidate or leader. All
+servers initially start out as a follower. In this state, servers can accept log entries
+from a leader and cast votes. If no entries are received for some time, servers
+self-promote to the candidate state. In the candidate state servers request votes from
 their peers. If a candidate receives a quorum of votes, then it is promoted to a leader.
 The leader must accept new log entries and replicate to all the other followers.
 In addition, if stale reads are not acceptable, all queries must also be performed on
@@ -86,22 +75,46 @@ without user intervention, and prevents unbounded disk usage as well as minimizi
 time spent replaying logs.
 
 Lastly, there is the issue of updating the peer set when new servers are joining
-or existing servers are leaving. As long as a quorum of nodes is available, this
+or existing servers are leaving. As long as a quorum of servers is available, this
 is not an issue as Raft provides mechanisms to dynamically update the peer set.
-If a quorum of nodes is unavailable, then this becomes a very challenging issue.
+If a quorum of servers is unavailable, then this becomes a very challenging issue.
 For example, suppose there are only 2 peers, A and B. The quorum size is also
-2, meaning both nodes must agree to commit a log entry. If either A or B fails,
+2, meaning both servers must agree to commit a log entry. If either A or B fails,
 it is now impossible to reach quorum. This means the cluster is unable to add,
-or remove a node, or commit any additional log entries. This results in *unavailability*.
+or remove a server, or commit any additional log entries. This results in *unavailability*.
 At this point, manual intervention would be required to remove either A or B,
-and to restart the remaining node in bootstrap mode.
+and to restart the remaining server in bootstrap mode.
 
-A Raft cluster of 3 nodes can tolerate a single node failure, while a cluster
-of 5 can tolerate 2 node failures. The recommended configuration is to either
+A Raft cluster of 3 servers can tolerate a single server failure, while a cluster
+of 5 can tolerate 2 server failures. The recommended configuration is to either
 run 3 or 5 raft servers. This maximizes availability without
 greatly sacrificing performance.
 
 In terms of performance, Raft is comparable to Paxos. Assuming stable leadership,
 committing a log entry requires a single round trip to half of the cluster.
-Thus performance is bound by disk I/O and network latency.
+
+### CRaft
+CRaft is a multi-leader extension to Raft. It tries to solve the single leader bottleneck,
+and is suitable for uses where high throughput is demanded.
+
+CRaft runs multiple groups of
+Raft concurrently. Each group operates as normal Raft: it elects a leader, and manages a replicated log.  A server may be a leader for a group, and a follower for other groups at the same time. It may also be a follower for every group. The leader server of each group can handle client requests for that group.
+
+Each log entry contains a timestamp taken by the leader of its group.
+The log entries from different groups are merged into a *merged log* based on timestamps of entries. The merging happens locally on each server. Each server's state machine applies entries in its merged log in order.
+
+During normal operation, a client can send requests to any leader server (request leader). 
+The workflow for handling a client request is as follows:
+1. The leader of a group receives a command from the client.
+2. The leader creates a log entry with the command, and assigns a timestamp.
+It appends the entry to its local log, and replicates it to followers.
+The entry is *committed* when it is replicated on a majority of servers.
+3. The entry is merged into the merged log.
+4. The leader executes the command in its state machine.
+5. The leader returns the execution result to the client.
+
+CRaft provides the same safety guarantee as Raft.
+
+An optimization for write requests is that the requests may be responded before they are executed,
+but CRaft guarantees that any later reads will see the most recent writes.
 
