@@ -79,11 +79,6 @@ func (r *Raft) runFSM() {
 		if req.future != nil {
 			req.future.response = resp
 			req.future.respond(nil)
-			// craft
-			// single group, execution is completed
-			if r.nGroups <= 1 {
-				req.future.Complete()
-			}
 		}
 	}
 
