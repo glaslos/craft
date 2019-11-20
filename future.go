@@ -174,6 +174,11 @@ func (l *LogFuture) Wait() {
 	<-l.done
 }
 
+// SetResponse sets the response of the future
+func (l *LogFuture) SetResponse(resp interface{}) {
+	l.response = resp
+}
+
 type shutdownFuture struct {
 	raft *Raft
 }
