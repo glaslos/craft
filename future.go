@@ -39,8 +39,8 @@ type ApplyFuture interface {
 	// craft
 	// Wait waits for a log entry gets executed
 	Wait()
-	// complete notifies the completion of execution
-	complete()
+	// Complete notifies the completion of execution
+	Complete()
 }
 
 // ConfigurationFuture is used for GetConfiguration and can return the
@@ -82,7 +82,7 @@ func (e errorFuture) Index() uint64 {
 
 // craft
 func (e errorFuture) Wait()     {}
-func (e errorFuture) complete() {}
+func (e errorFuture) Complete() {}
 
 // deferError can be embedded to allow a future
 // to provide an error in the future.
@@ -130,7 +130,7 @@ func (d *deferError) respond(err error) {
 // be appended to the log. These are encoded here for leaderLoop() to process.
 // This is internal to a single server.
 type configurationChangeFuture struct {
-	logFuture
+	LogFuture
 	req configurationChangeRequest
 }
 
@@ -143,32 +143,34 @@ type bootstrapFuture struct {
 	configuration Configuration
 }
 
-// logFuture is used to apply a log entry and waits until
+// LogFuture is used to apply a log entry and waits until
 // the log is considered committed.
-type logFuture struct {
+type LogFuture struct {
 	deferError
 	log      Log
 	response interface{}
 	dispatch time.Time
 }
 
-func (l *logFuture) Response() interface{} {
+// Response returns the response from fsm
+func (l *LogFuture) Response() interface{} {
 	return l.response
 }
 
-func (l *logFuture) Index() uint64 {
+// Index returns the log index
+func (l *LogFuture) Index() uint64 {
 	return l.log.Index
 }
 
 // craft
-// complete is called when the entry is executed
-func (l *logFuture) complete() {
+// Complete is called when the entry is executed
+func (l *LogFuture) Complete() {
 	asyncNotifyCh(l.done)
 }
 
 // craft
 // Wait waits for execution
-func (l *logFuture) Wait() {
+func (l *LogFuture) Wait() {
 	<-l.done
 }
 

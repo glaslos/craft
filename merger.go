@@ -21,7 +21,7 @@ type MergerEntry struct {
 	Timestamp  int64
 	CommitTime int64
 	Data       []byte
-	Done       func()
+	Future     *LogFuture
 }
 
 // MergerGroupLog manages log and metadata for a group

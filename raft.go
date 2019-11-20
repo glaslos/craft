@@ -75,14 +75,14 @@ func getSnapshotVersion(protocolVersion ProtocolVersion) SnapshotVersion {
 // with an optional associated future that should be invoked.
 type commitTuple struct {
 	log    *Log
-	future *logFuture
+	future *LogFuture
 }
 
 // leaderState is state that is used while we are a leader.
 type leaderState struct {
 	commitCh   chan struct{}
 	commitment *commitment
-	inflight   *list.List // list of logFuture in log index order
+	inflight   *list.List // list of LogFuture in log index order
 	replState  map[ServerID]*followerReplication
 	notify     map[*verifyFuture]struct{}
 	stepDown   chan struct{}
@@ -399,7 +399,7 @@ func (r *Raft) runLeader() {
 
 		// Respond to all inflight operations
 		for e := r.leaderState.inflight.Front(); e != nil; e = e.Next() {
-			e.Value.(*logFuture).respond(ErrLeadershipLost)
+			e.Value.(*LogFuture).respond(ErrLeadershipLost)
 		}
 
 		// Respond to any pending verify requests
@@ -455,12 +455,12 @@ func (r *Raft) runLeader() {
 	// an unbounded number of uncommitted configurations in the log. We now
 	// maintain that there exists at most one uncommitted configuration entry in
 	// any log, so we have to do proper no-ops here.
-	noop := &logFuture{
+	noop := &LogFuture{
 		log: Log{
 			Type: LogNoop,
 		},
 	}
-	r.dispatchLogs([]*logFuture{noop})
+	r.dispatchLogs([]*LogFuture{noop})
 
 	// craft
 	go r.leaderTimeCommitLoop()
@@ -582,7 +582,7 @@ func (r *Raft) leaderLoop() {
 				if e == nil {
 					break
 				}
-				commitLog := e.Value.(*logFuture)
+				commitLog := e.Value.(*LogFuture)
 				idx := commitLog.log.Index
 				if idx > commitIndex {
 					break
@@ -648,7 +648,7 @@ func (r *Raft) leaderLoop() {
 				atomic.StoreInt64(&r.inflightTimestamp, getTimestamp())
 			}
 			r.assignTimestamp(newLog)
-			ready := []*logFuture{newLog}
+			ready := []*LogFuture{newLog}
 			for i := 0; i < r.conf.MaxAppendEntries; i++ {
 				select {
 				case newLog := <-r.applyCh:
@@ -800,7 +800,7 @@ func (r *Raft) restoreUserSnapshot(meta *SnapshotMeta, reader io.Reader) error {
 		if e == nil {
 			break
 		}
-		e.Value.(*logFuture).respond(ErrAbortedByRestore)
+		e.Value.(*LogFuture).respond(ErrAbortedByRestore)
 		r.leaderState.inflight.Remove(e)
 	}
 
@@ -895,7 +895,7 @@ func (r *Raft) appendConfigurationEntry(future *configurationChangeFuture) {
 		}
 	}
 
-	r.dispatchLogs([]*logFuture{&future.logFuture})
+	r.dispatchLogs([]*LogFuture{&future.LogFuture})
 	index := future.Index()
 	r.configurations.latest = configuration
 	r.configurations.latestIndex = index
@@ -905,7 +905,7 @@ func (r *Raft) appendConfigurationEntry(future *configurationChangeFuture) {
 
 // dispatchLog is called on the leader to push a log to disk, mark it
 // as inflight and begin replication of it.
-func (r *Raft) dispatchLogs(applyLogs []*logFuture) {
+func (r *Raft) dispatchLogs(applyLogs []*LogFuture) {
 	now := time.Now()
 	defer metrics.MeasureSince([]string{"raft", "leader", "dispatchLog"}, now)
 
@@ -953,7 +953,7 @@ func (r *Raft) dispatchLogs(applyLogs []*logFuture) {
 // pass future=nil.
 // Leaders call this once per inflight when entries are committed. They pass
 // the future from inflights.
-func (r *Raft) processLogs(index uint64, future *logFuture) {
+func (r *Raft) processLogs(index uint64, future *LogFuture) {
 	// Reject logs we've applied already
 	lastApplied := r.getLastApplied()
 	if index <= lastApplied {
@@ -982,7 +982,7 @@ func (r *Raft) processLogs(index uint64, future *logFuture) {
 }
 
 // processLog is invoked to process the application of a single committed log entry.
-func (r *Raft) processLog(l *Log, future *logFuture) {
+func (r *Raft) processLog(l *Log, future *LogFuture) {
 	switch l.Type {
 	case LogBarrier:
 		// Barrier is handled by the FSM
@@ -1753,7 +1753,7 @@ func getUncertaintyFromTimestamp(t int64) int {
 
 // craft
 // assign timestamps to the log, used in leader loop
-func (r *Raft) assignTimestamp(log *logFuture) {
+func (r *Raft) assignTimestamp(log *LogFuture) {
 	timestamp := getTimestamp()
 	if !r.isSyncEntry(log.log) {
 		atomic.StoreInt64(&r.maxTimestamp, timestamp)
@@ -1764,6 +1764,7 @@ func (r *Raft) assignTimestamp(log *logFuture) {
 }
 
 // craft
+// leaderTimeCommitLoop checks if the committed entries have been executed
 func (r *Raft) leaderTimeCommitLoop() {
 	for r.getState() == Leader {
 		select {
@@ -1782,7 +1783,7 @@ func (r *Raft) leaderTimeCommitLoop() {
 				if commitLog.log.Timestamp > commitTime {
 					break
 				}
-				commitLog.future.complete()
+				commitLog.future.Complete()
 				r.leaderState.inflightLock.Lock()
 				r.leaderState.inflightCommit.Remove(e)
 				r.leaderState.inflightLock.Unlock()

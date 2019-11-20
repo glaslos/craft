@@ -31,9 +31,9 @@ type FSM interface {
 	Restore(io.ReadCloser) error
 
 	// craft
-	// ApplyWithCallback is same as Apply with a callback function that is bind to the
-	// respond function of the log future
-	ApplyWithCallback(*Log, func()) interface{}
+	// ApplyWithFuture is same as Apply, with with an optional associated future
+	// that should be invoked.
+	ApplyWithFuture(*Log, *LogFuture) interface{}
 }
 
 // FSMSnapshot is returned by an FSM in response to a Snapshot
@@ -61,11 +61,7 @@ func (r *Raft) runFSM() {
 			start := time.Now()
 			// craft
 			// resp = r.fsm.Apply(req.log)
-			if req.future != nil {
-				resp = r.fsm.ApplyWithCallback(req.log, req.future.complete)
-			} else {
-				resp = r.fsm.ApplyWithCallback(req.log, nil)
-			}
+			resp = r.fsm.ApplyWithFuture(req.log, req.future)
 			if r.conf.Mode == 0 && r.getState() == Leader {
 				r.leaderState.inflightLock.Lock()
 				r.leaderState.inflightCommit.PushBack(req)
@@ -86,7 +82,7 @@ func (r *Raft) runFSM() {
 			// craft
 			// single group, execution is completed
 			if r.nGroups <= 1 {
-				req.future.complete()
+				req.future.Complete()
 			}
 		}
 	}

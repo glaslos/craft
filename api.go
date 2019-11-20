@@ -72,7 +72,7 @@ type Raft struct {
 
 	// applyCh is used to async send logs to the main thread to
 	// be committed and applied to the FSM.
-	applyCh chan *logFuture
+	applyCh chan *LogFuture
 
 	// Configuration provided at Raft initialization
 	conf Config
@@ -478,7 +478,7 @@ func NewRaft(conf *Config, fsm FSM, logs LogStore, stable StableStore, snaps Sna
 	// Create Raft struct.
 	r := &Raft{
 		protocolVersion:       protocolVersion,
-		applyCh:               make(chan *logFuture),
+		applyCh:               make(chan *LogFuture),
 		conf:                  *conf,
 		fsm:                   fsm,
 		fsmMutateCh:           make(chan interface{}, 128),
@@ -666,21 +666,21 @@ func (r *Raft) Apply(cmd []byte, timeout time.Duration) ApplyFuture {
 	}
 
 	// Create a log future, no index or term yet
-	logFuture := &logFuture{
+	LogFuture := &LogFuture{
 		log: Log{
 			Type: LogCommand,
 			Data: cmd,
 		},
 	}
-	logFuture.init()
+	LogFuture.init()
 
 	select {
 	case <-timer:
 		return errorFuture{ErrEnqueueTimeout}
 	case <-r.shutdownCh:
 		return errorFuture{ErrRaftShutdown}
-	case r.applyCh <- logFuture:
-		return logFuture
+	case r.applyCh <- LogFuture:
+		return LogFuture
 	}
 }
 
@@ -697,20 +697,20 @@ func (r *Raft) Barrier(timeout time.Duration) Future {
 	}
 
 	// Create a log future, no index or term yet
-	logFuture := &logFuture{
+	LogFuture := &LogFuture{
 		log: Log{
 			Type: LogBarrier,
 		},
 	}
-	logFuture.init()
+	LogFuture.init()
 
 	select {
 	case <-timer:
 		return errorFuture{ErrEnqueueTimeout}
 	case <-r.shutdownCh:
 		return errorFuture{ErrRaftShutdown}
-	case r.applyCh <- logFuture:
-		return logFuture
+	case r.applyCh <- LogFuture:
+		return LogFuture
 	}
 }
 
@@ -922,7 +922,7 @@ func (r *Raft) Restore(meta *SnapshotMeta, reader io.Reader, timeout time.Durati
 	// followers have gotten the restore and replicated at least this new
 	// entry, which shows that we've also faulted and installed the
 	// snapshot with the contents of the restore.
-	noop := &logFuture{
+	noop := &LogFuture{
 		log: Log{
 			Type: LogNoop,
 		},
