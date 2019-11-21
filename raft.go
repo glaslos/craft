@@ -303,7 +303,7 @@ func (r *Raft) runCandidate() {
 				r.isResigning = false
 				// wait out clock uncertainty
 				waitingTime := time.Duration(math.Pow10(r.conf.MaxClockUncertainty)) * time.Nanosecond
-				t := getTimestamp()
+				t := r.getTimestamp()
 				w := time.Duration(atomic.LoadInt64(&r.maxTimestamp) - t)
 				if w > waitingTime {
 					waitingTime = w
@@ -378,8 +378,7 @@ func (r *Raft) runLeader() {
 	// craft
 	r.leaderState.timeCommitCh = make(chan struct{}, 1)
 	r.leaderState.timeCommitment = newTimeCommitment(r.leaderState.timeCommitCh,
-		r.configurations.latest,
-		getTimestamp())
+		r.configurations.latest, r.getTimestamp())
 	r.leaderState.inflightCommit = list.New()
 	r.leaderState.syncEntryCh = make(chan struct{}, 1)
 
@@ -645,7 +644,7 @@ func (r *Raft) leaderLoop() {
 			// Group commit, gather all the ready commits
 			// craft
 			if !r.isSyncEntry(newLog.log) {
-				atomic.StoreInt64(&r.inflightTimestamp, getTimestamp())
+				atomic.StoreInt64(&r.inflightTimestamp, r.getTimestamp())
 			}
 			r.assignTimestamp(newLog)
 			ready := []*LogFuture{newLog}
@@ -1074,7 +1073,7 @@ func (r *Raft) appendEntries(rpc RPC, a *AppendEntriesRequest) {
 		Success:        false,
 		NoRetryBackoff: false,
 		// craft
-		Timestamp: getTimestamp(),
+		Timestamp: r.getTimestamp(),
 	}
 	var rpcErr error
 	defer func() {
@@ -1236,7 +1235,7 @@ func (r *Raft) appendEntries(rpc RPC, a *AppendEntriesRequest) {
 	r.setLastContact()
 	// craft
 	r.resetTargetPriority()
-	resp.Timestamp = getTimestamp()
+	resp.Timestamp = r.getTimestamp()
 	return
 }
 
@@ -1654,7 +1653,7 @@ func (r *Raft) nextSafeTime(index uint64) int64 {
 	case Candidate:
 		return 0
 	case Follower:
-		return getTimestamp()
+		return r.getTimestamp()
 	case Leader:
 		var ts int64
 		inflightTimestamp := atomic.LoadInt64(&r.inflightTimestamp)
@@ -1679,7 +1678,7 @@ func (r *Raft) nextSafeTime(index uint64) int64 {
 			// 	index, nextIndex, lastIndex, formatTimestamp(ts))
 		} else {
 			// must take a timestamp before the check, in case new timestamps are assigned after the check
-			now := getTimestamp()
+			now := r.getTimestamp()
 			if err := r.logs.GetLog(lastIndex, &entry); err != nil {
 				return 0
 			}
@@ -1739,9 +1738,9 @@ func formatTimestamp(t int64) string {
 }
 
 // craft
-func getTimestamp() int64 {
+func (r *Raft) getTimestamp() int64 {
 	t := time.Now().UnixNano()
-	t = t/10*10 + int64(getClockUncertainty())
+	t = t/10*10 + int64(r.clock.GetClockUncertainty())
 	t += clockOffset
 	return t
 }
@@ -1754,7 +1753,7 @@ func getUncertaintyFromTimestamp(t int64) int {
 // craft
 // assign timestamps to the log, used in leader loop
 func (r *Raft) assignTimestamp(log *LogFuture) {
-	timestamp := getTimestamp()
+	timestamp := r.getTimestamp()
 	if !r.isSyncEntry(log.log) {
 		atomic.StoreInt64(&r.maxTimestamp, timestamp)
 	}

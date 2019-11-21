@@ -187,8 +187,8 @@ type Raft struct {
 	targetPriority int
 	// fast update
 	fastUpdateInfo []map[ServerID]*fastUpdateInfo
-	// clock offset, for experiment
-	clockOffset int64
+	// clock interface
+	clock Clock
 }
 
 // BootstrapCluster initializes a server's storage with the given cluster
@@ -1107,15 +1107,29 @@ func (r *Raft) AppliedIndex() uint64 {
 	return r.getLastApplied()
 }
 
-// SetupGroups sets the Raft group replicas
-func (r *Raft) SetupGroups(groupID int, localReplicas []*Raft, merger *Merger) {
+// craft
+// ConfigureGroups configures CRaft group for the Raft instance.
+// It sets the group id, local Raft instances on the same server, the merger,
+// and the clock interface implementation.
+func (r *Raft) ConfigureGroups(groupID int, localReplicas []*Raft, merger *Merger, clock Clock) {
 	r.groupID = groupID
 	r.nGroups = len(localReplicas)
 	r.merger = merger
 	r.localReplicas = localReplicas
+	r.clock = clock
 }
 
 // IsLeader returns whether the replica is leader
 func (r *Raft) IsLeader() bool {
 	return r.getState() == Leader
+}
+
+// craft
+// Clock is an interface that should be implemented
+// to provide the clock uncertainty
+type Clock interface {
+	// GetClockUncertainty returns the current clock uncertainty, i.e., max possible clock offsets
+	// between any two clocks in the network, in the exponent of 10 nanoseconds.
+	// For example, a return value of 5 means the current uncertainty is 10^5ns = 100us
+	GetClockUncertainty() int
 }
