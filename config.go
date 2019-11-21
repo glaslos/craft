@@ -198,7 +198,6 @@ type Config struct {
 	// MaxClockUncertainty is the maximum accepting clock error bound in fast update,
 	// expressed in terms of power of 10, in nanoseconds
 	MaxClockUncertainty int
-	Mode int
 }
 
 // DefaultConfig returns a Config with usable defaults.

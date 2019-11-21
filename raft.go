@@ -1764,7 +1764,8 @@ func (r *Raft) assignTimestamp(log *LogFuture) {
 }
 
 // craft
-// leaderTimeCommitLoop checks if the committed entries have been executed
+// leaderTimeCommitLoop checks for fast path: if the fast path condition satisfies,
+// respond to the log request.
 func (r *Raft) leaderTimeCommitLoop() {
 	for r.getState() == Leader {
 		select {
@@ -1781,7 +1782,7 @@ func (r *Raft) leaderTimeCommitLoop() {
 				if commitLog.log.Timestamp > commitTime {
 					break
 				}
-				// commitLog.future.Complete()
+				commitLog.future.Complete()
 				r.leaderState.inflightLock.Lock()
 				r.leaderState.inflightCommit.Remove(e)
 				r.leaderState.inflightLock.Unlock()

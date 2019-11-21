@@ -51,6 +51,7 @@ type Log struct {
 	// craft
 	// Timestamp of the entry
 	Timestamp int64
+	FastPath  bool
 }
 
 // LogStore is used to provide an interface for storing

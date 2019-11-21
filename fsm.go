@@ -62,7 +62,7 @@ func (r *Raft) runFSM() {
 			// craft
 			// resp = r.fsm.Apply(req.log)
 			resp = r.fsm.ApplyWithFuture(req.log, req.future)
-			if r.conf.Mode == 0 && r.getState() == Leader {
+			if req.log.FastPath && r.getState() == Leader {
 				r.leaderState.inflightLock.Lock()
 				r.leaderState.inflightCommit.PushBack(req)
 				r.leaderState.inflightLock.Unlock()

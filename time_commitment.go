@@ -7,6 +7,7 @@ import (
 // TimeCommitment is used to advance the leader's commit index. The leader and
 // replication goroutines report in newly written entries with Match(), and
 // this notifies on commitCh when the commit timestamp has advanced.
+// This is used for fast path.
 type timeCommitment struct {
 	// protects matchTimes and commitTime
 	sync.Mutex

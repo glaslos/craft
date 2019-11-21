@@ -684,6 +684,47 @@ func (r *Raft) Apply(cmd []byte, timeout time.Duration) ApplyFuture {
 	}
 }
 
+// craft
+// ApplyFastPath is used to apply a command to the FSM in a highly consistent
+// manner, using fast path. This returns a future that can be used to wait on the application.
+// An optional timeout can be provided to limit the amount of time we wait
+// for the command to be started. This must be run on the leader or it
+// will fail.
+func (r *Raft) ApplyFastPath(cmd []byte, timeout time.Duration) ApplyFuture {
+	metrics.IncrCounter([]string{"raft", "apply"}, 1)
+	var timer <-chan time.Time
+	if timeout > 0 {
+		timer = time.After(timeout)
+	}
+
+	// craft
+	// reject request if the leader is in passive state
+	// sync request should still go through
+	if r.isResigning && len(cmd) > 0 {
+		r.logger.Printf("[DEBUG] raft: reject request because leader is stepping down\n")
+		return errorFuture{ErrRejected}
+	}
+
+	// Create a log future, no index or term yet
+	LogFuture := &LogFuture{
+		log: Log{
+			Type:     LogCommand,
+			Data:     cmd,
+			FastPath: true,
+		},
+	}
+	LogFuture.init()
+
+	select {
+	case <-timer:
+		return errorFuture{ErrEnqueueTimeout}
+	case <-r.shutdownCh:
+		return errorFuture{ErrRaftShutdown}
+	case r.applyCh <- LogFuture:
+		return LogFuture
+	}
+}
+
 // Barrier is used to issue a command that blocks until all preceeding
 // operations have been applied to the FSM. It can be used to ensure the
 // FSM reflects all queued writes. An optional timeout can be provided to
