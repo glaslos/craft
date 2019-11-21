@@ -1770,7 +1770,6 @@ func (r *Raft) leaderTimeCommitLoop() {
 		select {
 		case <-r.leaderState.timeCommitCh:
 			commitTime := r.leaderState.timeCommitment.getCommitTime()
-			// r.logger.Printf("[DEBUG] raft: commit time %v\n", formatTimestamp(commitTime))
 			for {
 				r.leaderState.inflightLock.Lock()
 				e := r.leaderState.inflightCommit.Front()
@@ -1779,11 +1778,10 @@ func (r *Raft) leaderTimeCommitLoop() {
 					break
 				}
 				commitLog := e.Value.(*commitTuple)
-				// r.logger.Printf("[DEBUG] raft: entry timestamp %v\n", formatTimestamp(commitLog.log.Timestamp))
 				if commitLog.log.Timestamp > commitTime {
 					break
 				}
-				commitLog.future.Complete()
+				// commitLog.future.Complete()
 				r.leaderState.inflightLock.Lock()
 				r.leaderState.inflightCommit.Remove(e)
 				r.leaderState.inflightLock.Unlock()
