@@ -16,12 +16,11 @@ var (
 
 // MergerEntry in merger queue
 type MergerEntry struct {
-	Index      uint64
-	GroupID    int
-	Timestamp  int64
-	CommitTime int64
-	Data       []byte
-	Future     *LogFuture
+	Index     uint64
+	GroupID   int
+	Timestamp int64
+	Data      []byte
+	Future    *LogFuture
 }
 
 // MergerGroupLog manages log and metadata for a group
