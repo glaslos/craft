@@ -16,11 +16,8 @@ var (
 
 // MergerEntry in merger queue
 type MergerEntry struct {
-	Index     uint64
-	GroupID   int
-	Timestamp int64
-	Data      []byte
-	Future    *LogFuture
+	Log    *Log
+	Future *LogFuture
 }
 
 // MergerGroupLog manages log and metadata for a group
@@ -35,18 +32,31 @@ type MergerGroupLog struct {
 	futureSafeTimes map[uint64]int64
 }
 
+// CFSM provides an interface that can be implemented by
+// clients to make use of the replicated log.
+// This is the state machine that actually applies the log, whereas
+// FSM is the state machine of each Raft instance.
+type CFSM interface {
+	// Apply log is invoked once a log entry is merged.
+	// It returns a value which will be made available in the
+	// Future in MergerEntry
+	Apply(*MergerEntry) interface{}
+
+	// Snapshot and Restore are not supported yet
+}
+
 // Merger implements log merger
 type Merger struct {
 	nGroups   int
 	groupLogs []*MergerGroupLog
-	execFunc  func(*MergerEntry)
+	fsm       CFSM
 
 	mergeCh chan struct{}
 	lock    sync.Mutex
 }
 
 // NewMerger returns a new Merger
-func NewMerger(nGroups int, execFunc func(*MergerEntry)) *Merger {
+func NewMerger(nGroups int, fsm CFSM) *Merger {
 	groupLogs := make([]*MergerGroupLog, nGroups)
 	for i := 0; i < nGroups; i++ {
 		queue := list.New()
@@ -61,7 +71,7 @@ func NewMerger(nGroups int, execFunc func(*MergerEntry)) *Merger {
 	m := &Merger{
 		groupLogs: groupLogs,
 		nGroups:   nGroups,
-		execFunc:  execFunc,
+		fsm:       fsm,
 		mergeCh:   make(chan struct{}),
 	}
 
@@ -100,7 +110,7 @@ func (m *Merger) AddFutureSafeTime(groupID int, index uint64, safeTime int64) {
 	}
 }
 
-// Enqueue puts an entry into queue
+// Enqueue puts an CommitTuple into queue
 func (m *Merger) Enqueue(groupID int, entry *MergerEntry) {
 	m.lock.Lock()
 	defer m.lock.Unlock()
@@ -108,30 +118,25 @@ func (m *Merger) Enqueue(groupID int, entry *MergerEntry) {
 	groupLog := m.groupLogs[groupID]
 
 	// data len = 0 is sync entry
-	if len(entry.Data) > 0 {
+	if len(entry.Log.Data) > 0 {
 		groupLog.queue.PushBack(entry)
-		if entry.Timestamp < groupLog.safeTime {
+		if entry.Log.Timestamp < groupLog.safeTime {
 			panic(fmt.Sprintf("Fatal error: group %v get an entry with timestamp %v smaller than safe time %v\n",
-				groupID, formatTimestamp(entry.Timestamp), formatTimestamp(groupLog.safeTime)))
+				groupID, formatTimestamp(entry.Log.Timestamp), formatTimestamp(groupLog.safeTime)))
 		}
 	}
-	groupLog.applyIndex = entry.Index
-	groupLog.safeTime = entry.Timestamp
+	groupLog.applyIndex = entry.Log.Index
+	groupLog.safeTime = entry.Log.Timestamp
 	groupLog.isFastUpdate = false
 
-	ts, ok := groupLog.futureSafeTimes[entry.Index]
+	ts, ok := groupLog.futureSafeTimes[entry.Log.Index]
 	if ok {
-		// logger.Printf("[DEBUG] merger: group %v use future safe time update index %v ts %v\n",
-		// 	groupID, entry.Index, formatTimestamp(ts))
 		groupLog.safeTime = ts
-		delete(groupLog.futureSafeTimes, entry.Index)
+		delete(groupLog.futureSafeTimes, entry.Log.Index)
 	}
 
 	asyncNotifyCh(m.mergeCh)
 
-	// for i := 0; i < m.nGroups; i++ {
-	// 	logger.Printf("[DEBUG] merger: group %v safe time %v\n", i, formatTimestamp(m.groupLogs[i].safeTime))
-	// }
 }
 
 // GetApplyIndexes returns a list of apply indexes
@@ -143,7 +148,7 @@ func (m *Merger) GetApplyIndexes() []uint64 {
 	return indexes
 }
 
-// NeedSync returns whether merging is blocked and needs a sync entry
+// NeedSync returns whether merging is blocked and needs a sync req
 func (m *Merger) NeedSync() bool {
 	m.lock.Lock()
 	defer m.lock.Unlock()
@@ -157,7 +162,7 @@ func (m *Merger) NeedSync() bool {
 		isFastUpdate = isFastUpdate || l.isFastUpdate
 	}
 
-	// need a sync entry if there are some entries that might not be able to merge
+	// need a sync req if there are some entries that might not be able to merge
 	return (count > 0 && count < m.nGroups)
 }
 
@@ -180,7 +185,7 @@ func (m *Merger) run() {
 		entry := queue.Remove(e).(*MergerEntry)
 		m.lock.Unlock()
 
-		m.execFunc(entry)
+		m.fsm.Apply(entry)
 	}
 }
 
@@ -195,8 +200,8 @@ func (m *Merger) nextMerge() int {
 		e := m.groupLogs[i].queue.Front()
 		if e != nil {
 			entry := e.Value.(*MergerEntry)
-			if entry.Timestamp < minTimestamp {
-				minTimestamp = entry.Timestamp
+			if entry.Log.Timestamp < minTimestamp {
+				minTimestamp = entry.Log.Timestamp
 				group = i
 			}
 		}

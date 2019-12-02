@@ -57,11 +57,8 @@ func (r *Raft) runFSM() {
 			// craft
 			// resp = r.fsm.Apply(req.log)
 			entry := &MergerEntry{
-				Index:     req.log.Index,
-				GroupID:   r.groupID,
-				Timestamp: req.log.Timestamp,
-				Data:      req.log.Data,
-				Future:    req.future,
+				Log:    req.log,
+				Future: req.future,
 			}
 			r.merger.Enqueue(r.groupID, entry)
 
