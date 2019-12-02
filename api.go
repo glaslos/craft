@@ -56,6 +56,9 @@ var (
 	// it is stepping down, or is waiting out clock error
 	ErrRejected = errors.New("leader rejects the request")
 
+	// ErrWrongConfiguration is returned when craft is not correctly configured
+	ErrWrongConfiguration = errors.New("craft not correctly configured")
+
 	// clockOffsetEnv is name of environment variable of clock offset, for experiment
 	clockOffsetEnv = "CLOCK_OFFSET"
 	clockOffset    = int64(0)
@@ -665,6 +668,12 @@ func (r *Raft) Apply(cmd []byte, timeout time.Duration) ApplyFuture {
 		return errorFuture{ErrRejected}
 	}
 
+	// check if craft is configured
+	if r.merger == nil {
+		r.logger.Printf("[DEBUG] raft: reject request because craft is not configured\n")
+		return errorFuture{ErrRejected}
+	}
+
 	// Create a log future, no index or term yet
 	LogFuture := &LogFuture{
 		log: Log{
@@ -1111,12 +1120,16 @@ func (r *Raft) AppliedIndex() uint64 {
 // ConfigureGroups configures CRaft group for the Raft instance.
 // It sets the group id, local Raft instances on the same server, the merger,
 // and the clock interface implementation.
-func (r *Raft) ConfigureGroups(groupID int, localReplicas []*Raft, merger *Merger, clock Clock) {
+func (r *Raft) ConfigureGroups(groupID int, localReplicas []*Raft, merger *Merger, clock Clock) error {
+	if groupID >= len(localReplicas) {
+		return ErrWrongConfiguration
+	}
 	r.groupID = groupID
 	r.nGroups = len(localReplicas)
 	r.merger = merger
 	r.localReplicas = localReplicas
 	r.clock = clock
+	return nil
 }
 
 // IsLeader returns whether the replica is leader

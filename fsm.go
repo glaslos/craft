@@ -29,11 +29,6 @@ type FSM interface {
 	// concurrently with any other command. The FSM must discard all previous
 	// state.
 	Restore(io.ReadCloser) error
-
-	// craft
-	// ApplyWithFuture is same as Apply, with with an optional associated future
-	// that should be invoked.
-	ApplyWithFuture(*Log, *LogFuture) interface{}
 }
 
 // FSMSnapshot is returned by an FSM in response to a Snapshot
@@ -56,12 +51,20 @@ func (r *Raft) runFSM() {
 
 	commit := func(req *commitTuple) {
 		// Apply the log if a command
-		var resp interface{}
+		// var resp interface{}
 		if req.log.Type == LogCommand {
 			start := time.Now()
 			// craft
 			// resp = r.fsm.Apply(req.log)
-			resp = r.fsm.ApplyWithFuture(req.log, req.future)
+			entry := &MergerEntry{
+				Index:     req.log.Index,
+				GroupID:   r.groupID,
+				Timestamp: req.log.Timestamp,
+				Data:      req.log.Data,
+				Future:    req.future,
+			}
+			r.merger.Enqueue(r.groupID, entry)
+
 			if req.log.FastPath && r.getState() == Leader {
 				r.leaderState.inflightLock.Lock()
 				r.leaderState.inflightCommit.PushBack(req)
@@ -77,7 +80,6 @@ func (r *Raft) runFSM() {
 
 		// Invoke the future if given
 		if req.future != nil {
-			req.future.response = resp
 			req.future.respond(nil)
 		}
 	}
