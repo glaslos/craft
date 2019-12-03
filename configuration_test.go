@@ -168,50 +168,50 @@ var nextConfigurationTests = []struct {
 	next     string
 }{
 	// AddStaging: was missing.
-	{Configuration{}, AddStaging, 1, "{[{Voter id1 addr1}]}"},
-	{singleServer, AddStaging, 2, "{[{Voter id1 addr1x} {Voter id2 addr2}]}"},
+	{Configuration{}, AddStaging, 1, "{[{Voter id1 addr1 0}]}"},
+	{singleServer, AddStaging, 2, "{[{Voter id1 addr1x 0} {Voter id2 addr2 0}]}"},
 	// AddStaging: was Voter.
-	{singleServer, AddStaging, 1, "{[{Voter id1 addr1}]}"},
+	{singleServer, AddStaging, 1, "{[{Voter id1 addr1 0}]}"},
 	// AddStaging: was Staging.
-	{oneOfEach, AddStaging, 2, "{[{Voter id1 addr1x} {Voter id2 addr2} {Nonvoter id3 addr3x}]}"},
+	{oneOfEach, AddStaging, 2, "{[{Voter id1 addr1x 0} {Voter id2 addr2 0} {Nonvoter id3 addr3x 0}]}"},
 	// AddStaging: was Nonvoter.
-	{oneOfEach, AddStaging, 3, "{[{Voter id1 addr1x} {Staging id2 addr2x} {Voter id3 addr3}]}"},
+	{oneOfEach, AddStaging, 3, "{[{Voter id1 addr1x 0} {Staging id2 addr2x 0} {Voter id3 addr3 0}]}"},
 
 	// AddNonvoter: was missing.
-	{singleServer, AddNonvoter, 2, "{[{Voter id1 addr1x} {Nonvoter id2 addr2}]}"},
+	{singleServer, AddNonvoter, 2, "{[{Voter id1 addr1x 0} {Nonvoter id2 addr2 0}]}"},
 	// AddNonvoter: was Voter.
-	{singleServer, AddNonvoter, 1, "{[{Voter id1 addr1}]}"},
+	{singleServer, AddNonvoter, 1, "{[{Voter id1 addr1 0}]}"},
 	// AddNonvoter: was Staging.
-	{oneOfEach, AddNonvoter, 2, "{[{Voter id1 addr1x} {Staging id2 addr2} {Nonvoter id3 addr3x}]}"},
+	{oneOfEach, AddNonvoter, 2, "{[{Voter id1 addr1x 0} {Staging id2 addr2 0} {Nonvoter id3 addr3x 0}]}"},
 	// AddNonvoter: was Nonvoter.
-	{oneOfEach, AddNonvoter, 3, "{[{Voter id1 addr1x} {Staging id2 addr2x} {Nonvoter id3 addr3}]}"},
+	{oneOfEach, AddNonvoter, 3, "{[{Voter id1 addr1x 0} {Staging id2 addr2x 0} {Nonvoter id3 addr3 0}]}"},
 
 	// DemoteVoter: was missing.
-	{singleServer, DemoteVoter, 2, "{[{Voter id1 addr1x}]}"},
+	{singleServer, DemoteVoter, 2, "{[{Voter id1 addr1x 0}]}"},
 	// DemoteVoter: was Voter.
-	{voterPair, DemoteVoter, 2, "{[{Voter id1 addr1x} {Nonvoter id2 addr2x}]}"},
+	{voterPair, DemoteVoter, 2, "{[{Voter id1 addr1x 0} {Nonvoter id2 addr2x 0}]}"},
 	// DemoteVoter: was Staging.
-	{oneOfEach, DemoteVoter, 2, "{[{Voter id1 addr1x} {Nonvoter id2 addr2x} {Nonvoter id3 addr3x}]}"},
+	{oneOfEach, DemoteVoter, 2, "{[{Voter id1 addr1x 0} {Nonvoter id2 addr2x 0} {Nonvoter id3 addr3x 0}]}"},
 	// DemoteVoter: was Nonvoter.
-	{oneOfEach, DemoteVoter, 3, "{[{Voter id1 addr1x} {Staging id2 addr2x} {Nonvoter id3 addr3x}]}"},
+	{oneOfEach, DemoteVoter, 3, "{[{Voter id1 addr1x 0} {Staging id2 addr2x 0} {Nonvoter id3 addr3x 0}]}"},
 
 	// RemoveServer: was missing.
-	{singleServer, RemoveServer, 2, "{[{Voter id1 addr1x}]}"},
+	{singleServer, RemoveServer, 2, "{[{Voter id1 addr1x 0}]}"},
 	// RemoveServer: was Voter.
-	{voterPair, RemoveServer, 2, "{[{Voter id1 addr1x}]}"},
+	{voterPair, RemoveServer, 2, "{[{Voter id1 addr1x 0}]}"},
 	// RemoveServer: was Staging.
-	{oneOfEach, RemoveServer, 2, "{[{Voter id1 addr1x} {Nonvoter id3 addr3x}]}"},
+	{oneOfEach, RemoveServer, 2, "{[{Voter id1 addr1x 0} {Nonvoter id3 addr3x 0}]}"},
 	// RemoveServer: was Nonvoter.
-	{oneOfEach, RemoveServer, 3, "{[{Voter id1 addr1x} {Staging id2 addr2x}]}"},
+	{oneOfEach, RemoveServer, 3, "{[{Voter id1 addr1x 0} {Staging id2 addr2x 0}]}"},
 
 	// Promote: was missing.
-	{singleServer, Promote, 2, "{[{Voter id1 addr1x}]}"},
+	{singleServer, Promote, 2, "{[{Voter id1 addr1x 0}]}"},
 	// Promote: was Voter.
-	{singleServer, Promote, 1, "{[{Voter id1 addr1x}]}"},
+	{singleServer, Promote, 1, "{[{Voter id1 addr1x 0}]}"},
 	// Promote: was Staging.
-	{oneOfEach, Promote, 2, "{[{Voter id1 addr1x} {Voter id2 addr2x} {Nonvoter id3 addr3x}]}"},
+	{oneOfEach, Promote, 2, "{[{Voter id1 addr1x 0} {Voter id2 addr2x 0} {Nonvoter id3 addr3x 0}]}"},
 	// Promote: was Nonvoter.
-	{oneOfEach, Promote, 3, "{[{Voter id1 addr1x} {Staging id2 addr2x} {Nonvoter id3 addr3x}]}"},
+	{oneOfEach, Promote, 3, "{[{Voter id1 addr1x 0} {Staging id2 addr2x 0} {Nonvoter id3 addr3x 0}]}"},
 }
 
 func TestConfiguration_nextConfiguration_table(t *testing.T) {
