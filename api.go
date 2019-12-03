@@ -508,9 +508,9 @@ func NewRaft(conf *Config, fsm FSM, logs LogStore, stable StableStore, snaps Sna
 		observers:             make(map[uint64]*Observer),
 
 		// craft
-		priority:       1,
-		maxPriority:    1,
-		targetPriority: 1,
+		priority:       0,
+		maxPriority:    0,
+		targetPriority: 0,
 		maxTimestamp:   0,
 	}
 

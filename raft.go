@@ -462,7 +462,9 @@ func (r *Raft) runLeader() {
 	r.dispatchLogs([]*LogFuture{noop})
 
 	// craft
-	go r.leaderTimeCommitLoop()
+	if r.craftConfigured {
+		go r.leaderTimeCommitLoop()
+	}
 
 	// Sit in the leader loop until we step down
 	r.leaderLoop()
@@ -1197,7 +1199,7 @@ func (r *Raft) appendEntries(rpc RPC, a *AppendEntriesRequest) {
 
 	// craft
 	// fast update info
-	if len(a.Entries) > 0 && len(a.ApplyIndexes) == r.nGroups {
+	if r.craftConfigured && len(a.Entries) > 0 && len(a.ApplyIndexes) == r.nGroups {
 		localTerms := make([]uint64, r.nGroups)
 		nextSafeTimes := make([]int64, r.nGroups)
 
@@ -1616,9 +1618,9 @@ func (r *Raft) resetTargetPriority() {
 // craft
 func (r *Raft) decayTargetPriority() {
 	targetPriority := r.targetPriority / 2
-	if targetPriority < 1 {
-		targetPriority = 1
-	}
+	// if targetPriority < 1 {
+	// 	targetPriority = 1
+	// }
 	r.targetPriority = targetPriority
 	// r.logger.Printf("[DEBUG] raft: decay target priority to %v\n", r.targetPriority)
 }
@@ -1740,7 +1742,9 @@ func formatTimestamp(t int64) string {
 // craft
 func (r *Raft) getTimestamp() int64 {
 	t := time.Now().UnixNano()
-	t = t/10*10 + int64(r.clock.GetClockUncertainty())
+	if r.craftConfigured {
+		t = t/10*10 + int64(r.clock.GetClockUncertainty())
+	}
 	t += clockOffset
 	return t
 }

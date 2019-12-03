@@ -396,7 +396,7 @@ func (r *Raft) heartbeat(s *followerReplication, stopCh chan struct{}) {
 		}
 
 		// craft
-		if r.merger.NeedSync() {
+		if r.craftConfigured && r.merger.NeedSync() {
 			r.addSyncEntry()
 		}
 	}
