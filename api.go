@@ -192,6 +192,8 @@ type Raft struct {
 	fastUpdateInfo []map[ServerID]*fastUpdateInfo
 	// clock interface
 	clock Clock
+	// if craft is configured
+	craftConfigured bool
 }
 
 // BootstrapCluster initializes a server's storage with the given cluster
@@ -668,11 +670,11 @@ func (r *Raft) Apply(cmd []byte, timeout time.Duration) ApplyFuture {
 		return errorFuture{ErrRejected}
 	}
 
-	// check if craft is configured
-	if r.merger == nil {
-		r.logger.Printf("[DEBUG] raft: reject request because craft is not configured\n")
-		return errorFuture{ErrRejected}
-	}
+	// // check if craft is configured
+	// if !r.craftConfigured {
+	// 	r.logger.Printf("[DEBUG] raft: reject request because craft is not configured\n")
+	// 	return errorFuture{ErrRejected}
+	// }
 
 	// Create a log future, no index or term yet
 	LogFuture := &LogFuture{
@@ -1129,6 +1131,7 @@ func (r *Raft) ConfigureGroups(groupID int, localReplicas []*Raft, merger *Merge
 	r.merger = merger
 	r.localReplicas = localReplicas
 	r.clock = clock
+	r.craftConfigured = true
 	return nil
 }
 

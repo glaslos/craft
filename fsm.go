@@ -51,16 +51,19 @@ func (r *Raft) runFSM() {
 
 	commit := func(req *commitTuple) {
 		// Apply the log if a command
-		// var resp interface{}
+		var resp interface{}
 		if req.log.Type == LogCommand {
 			start := time.Now()
 			// craft
-			// resp = r.fsm.Apply(req.log)
-			entry := &MergerEntry{
-				Log:    req.log,
-				Future: req.future,
+			if r.craftConfigured {
+				entry := &MergerEntry{
+					Log:    req.log,
+					Future: req.future,
+				}
+				r.merger.Enqueue(r.groupID, entry)
+			} else {
+				resp = r.fsm.Apply(req.log)
 			}
-			r.merger.Enqueue(r.groupID, entry)
 
 			if req.log.FastPath && r.getState() == Leader {
 				r.leaderState.inflightLock.Lock()
@@ -77,6 +80,7 @@ func (r *Raft) runFSM() {
 
 		// Invoke the future if given
 		if req.future != nil {
+			req.future.response = resp
 			req.future.respond(nil)
 		}
 	}

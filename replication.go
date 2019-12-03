@@ -163,7 +163,7 @@ PIPELINE:
 	// to standard mode on failure.
 	if err := r.pipelineReplicate(s); err != nil {
 		if err != ErrPipelineReplicationNotSupported {
-			r.logger.Printf("[ERR] raft: Failed to start pipeline replication to %s: %s", s.peer, err)
+			r.logger.Printf("[ERR] raft: Failed to start pipeline replication to %v: %s", s.peer, err)
 		}
 	}
 	goto RPC
