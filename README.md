@@ -33,12 +33,10 @@ For complete documentation, see the associated [Godoc](http://godoc.org/github.c
 
 ## Getting started
 
-**TODO: Update links.**
-
 craft relies on clock synchronization. To get the best performance, the synchronization error
 should be smaller than the one-way delay between any two nodes in the cluster.
 
-An example use of craft is provided [here](), which is a replicated key-value store.
+An example use of craft is provided [here](https://gitlab.com/feiranwang/craft_example), which is a replicated key-value store.
 
 ## Protocol
 
